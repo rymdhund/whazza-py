@@ -8,3 +8,6 @@ run-checker:
 
 run-server:
 	docker run --rm -it --name status2server -v $(PWD)/server:/app status2 python3 server.py
+
+run-client:
+	docker run --rm -it -v $(PWD)/client:/app --link status2server status2 python3 client.py

@@ -39,4 +39,4 @@ def check_git_status(conf):
     return dict(dirty=r.is_dirty(), status_string=r.git.status())
 
 def test_command(conf):
-    return ("good", "")
+    return (conf.get('status', "good"), conf.get('message', ""))

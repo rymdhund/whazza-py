@@ -20,18 +20,14 @@ except yaml.scanner.ScannerError:
 
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5555)
-#config.setdefault('status_resource', '/incoming')
-config.setdefault('rules', [])
 
+check_in_key = 'checkers/{}/check-in'.format(config['checker_id'])
+rules = {check_in_key: {'type': 'check-in', 'key': check_in_key, 'valid_period': 15*60, 'check_interval': 5*60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0}}
 
 def send_msg(socket, msg):
-    print("  sending message")
     socket.send(json.dumps(msg).encode())
-    #  Get the reply.
-    print("  waiting for reply")
-    res = socket.recv()
-    print("  Received reply {}".format(res))
-
+    res = json.loads(socket.recv().decode())
+    return res
 
 def main():
     context = zmq.Context(1)
@@ -45,17 +41,23 @@ def main():
         'debian_update2':   commands.check_debian_update2,
         'portscan':         commands.port_scan,
         'git_status':       commands.check_git_status,
-        'test_command':     commands.test_command
+        'test_command':     commands.test_command,
+        'check-in':         commands.test_command
     }
 
-    for rule in config['rules']:
-        print("running {}".format(rule['name']))
-        if rule['command'] in cmds:
-            cmd = cmds[rule['command']]
+    for rule in rules.values():
+        print("running {}".format(rule['type']))
+        if rule['type'] in cmds:
+            cmd = cmds[rule['type']]
             status, message = cmd(rule['params'])
-            print("  result: {}".format((status, message)))
-            result_msg = {'key': rule['key'], 'status': status, 'message': message}
-            send_msg(socket, result_msg)
+            result_msg = {'key': rule['key'], 'status': status, 'msg': message, 'checker_id': config['checker_id']}
+            response = send_msg(socket, result_msg)
+            rule_config = response.get('rule-config', [])
+            if rule_config != []:
+                print("Info: updating config")
+                for rule_row in rule_config:
+                    print("Info: setting rule '{}'".format(rule_row['key']))
+                    rules[rule_row['key']] = rule_row
         else:
             print("ERROR: Couldn't find command '{}'".format(rule['command']))
 

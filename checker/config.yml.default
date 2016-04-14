@@ -1,8 +1,2 @@
+checker_id: "checker"
 server_host: "status2server"
-
-rules:
-  - name: "test"
-    key: "x/ssl"
-    valid_time: "24h"
-    check_every: "12h"
-    command: "test_command"
