@@ -4,7 +4,7 @@ create table checks (
   rule_key text not null,
   status integer not null,
   msg text not null,
-  time datetime not null default current_timestamp
+  time timestamp not null default current_timestamp
 );
 
 drop table if exists rules;

@@ -1,5 +1,5 @@
 #requests
 PyYAML
 GitPython
-
 pyzmq
+humanize

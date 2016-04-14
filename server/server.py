@@ -21,7 +21,7 @@ except yaml.scanner.ScannerError:
 config.setdefault('database', 'db.sqlite3')
 
 def now():
-    return datetime.datetime.now().isoformat()
+    return datetime.datetime.now()
 
 
 def checker_listener(socket, db):
@@ -137,7 +137,7 @@ class Database:
             """)
             last_successful = {}
             for row in cur.fetchall():
-                last_successful[row[0]] = row[1]
+                last_successful[row[0]] = row[1].timestamp()
             cur.close()
 
             cur = db.execute("""
@@ -149,8 +149,14 @@ class Database:
             """)
             ret = []
             for row in cur.fetchall():
-                key = row[0]
-                ret.append({'key': row[0], 'status': self.int_to_status[row[1]], 'message': row[2], 'time': row[3], 'last_successful': last_successful.get(key, None)})
+                key, status, time = row[0], self.int_to_status[row[1]], row[3]
+                rule = self.get_rule(key)
+                print("{}".format(time))
+                print("{}".format(type(time)))
+                if now() - time > datetime.timedelta(rule.valid_period):
+                    status = 'unknown'
+
+                ret.append({'key': row[0], 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
             return ret
 
     def status(self):

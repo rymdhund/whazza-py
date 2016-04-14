@@ -2,6 +2,8 @@ import yaml
 import sys
 import zmq
 import json
+from datetime import datetime
+import humanize
 
 config = {}
 try:
@@ -24,8 +26,11 @@ def send_msg(socket, msg):
 def status(socket):
     res = send_msg(socket, {'cmd': "status"})
     if res['status'] == 'ok':
+        print("Status:")
+        print("=======")
         for row in res['data']:
-            print("{:20s} {:4s} {} {}".format(row['key'], row['status'], row['time'], row['message']))
+            times = humanize.naturaltime(datetime.fromtimestamp(row['time']), "%Y-%m-%d %H:%M")
+            print("{:20s}   {:5s}   {}   {}".format(row['key'], row['status'], times, row['message']))
     else:
         print("Error: {}".format(res['message']))
 
