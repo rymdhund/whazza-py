@@ -1,4 +1,4 @@
-from socket import *
+from git import Repo
 
 def port_scan(conf):
     target_ip = gethostbyname(conf['target'] or 'localhost')
@@ -36,7 +36,8 @@ def check_debian_update2(conf):
 def check_git_status(conf):
     path = conf['path']
     r = Repo(path)
-    return dict(dirty=r.is_dirty(), status_string=r.git.status())
+    status = "fail" if r.is_dirty() else "good"
+    return (status, r.git.status())
 
 def test_command(conf):
     return (conf.get('status', "good"), conf.get('message', ""))

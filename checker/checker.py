@@ -38,8 +38,11 @@ def main():
     print("connecting to host {}".format(host))
     socket.connect(host)
 
+    # check-in every 5 min by default
     check_in_key = 'checkers/{}/check-in'.format(config['checker_id'])
     rules = [{'type': 'check-in', 'key': check_in_key, 'valid_period': 15*60, 'check_interval': 5*60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0}]
+
+    # keep track of when the checks were run
     last_run = {}
 
     while(1):
@@ -47,11 +50,10 @@ def main():
             'debian_update':    commands.check_debian_update,
             'debian_update2':   commands.check_debian_update2,
             'portscan':         commands.port_scan,
-            'git_status':       commands.check_git_status,
+            'git-status':       commands.check_git_status,
             'test':             commands.test_command,
             'check-in':         commands.test_command
         }
-
 
         new_rules = None
         print("Checking for something to do")
@@ -68,7 +70,7 @@ def main():
                         print("Info: updating config")
                         new_rules = rule_config
                 else:
-                    print("ERROR: Couldn't find command '{}'".format(rule['command']))
+                    print("ERROR: Couldn't find command '{}'".format(rule['type']))
 
                 last_run[rule['key']] = now()
 
