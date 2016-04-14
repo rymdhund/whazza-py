@@ -51,8 +51,8 @@ def checker_listener(socket, db):
                 print("Warning: unknown check for '{}'".format(check.rule_key))
 
         #  Send reply back to client
-        # add new config
-        socket.send(json.dumps({}).encode())
+        new_rules = [rule.dict() for rule in db.get_new_rules(checker, 0)] # TODO: get last update id from client
+        socket.send(json.dumps({'rule-config': new_rules}).encode())
 
 def client_listener(socket, db):
     while True:
@@ -62,7 +62,16 @@ def client_listener(socket, db):
         data = json.loads(message)
 
         if data['cmd'] == 'status':
-            msg = {'status': 'ok', 'data': db.status()}
+            msg = {'status': 'ok', 'data': db.status_data()}
+            socket.send(json.dumps(msg).encode())
+        elif data['cmd'] == 'dump-rules':
+            msg = {'status': 'ok', 'data': db.rule_config_data()}
+            socket.send(json.dumps(msg).encode())
+        elif data['cmd'] == 'set-rules':
+            for rule in data['data']:
+                print("setting rule {}".format(rule))
+                db.set_rule(Rule(rule['type'], rule['key'], rule['valid_period'], rule['check_interval'], rule['params'], rule['checker'], -1))
+            msg = {'status': 'ok', 'data': db.rule_config_data()}
             socket.send(json.dumps(msg).encode())
         else:
             msg = {"status": "error", "message": "Unknown command"}
@@ -78,12 +87,17 @@ class Rule:
         self.checker = checker
         self.update_id = update_id
 
+    def dict(self):
+        return {'type': self.type, 'key': self.key, 'valid_period': self.valid_period, 'check_interval': self.check_interval,
+                'params': self.params, 'checker': self.checker, 'update_id': self.update_id}
+
 class Check:
     def __init__(self, rule_key, status, msg, time):
         self.rule_key = rule_key
         self.status = status
         self.msg = msg
         self.time = time
+
 
 ############
 # Database #
@@ -100,15 +114,22 @@ class Database:
             print("Creating database")
             self._init_db()
 
+    def _row_to_rule(self, row):
+        params = json.loads(row[4])
+        return Rule(row[0], row[1], row[2], row[3], params, row[5], row[6])
 
     def get_rule(self, key):
         with closing(self._connect_db()) as db:
             cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where key = ?", (key,))
             res = cur.fetchone()
-            if res:
-                params = json.loads(res[4])
-                return Rule(res[0], res[1], res[2], res[3], params, res[5], res[6])
+            if res != None:
+                return self._row_to_rule(res)
             return None
+
+    def get_rules(self):
+        with closing(self._connect_db()) as db:
+            cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules")
+            return [self._row_to_rule(row) for row in cur.fetchall()]
 
     def add_rule(self, rule):
         with closing(self._connect_db()) as db:
@@ -118,6 +139,23 @@ class Database:
             """, (rule.type, rule.key, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker))
             db.commit()
 
+    def get_new_rules(self, checker, update_id):
+        with closing(self._connect_db()) as db:
+            cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where checker=? and update_id > ?", (checker, update_id))
+            return [self._row_to_rule(row) for row in cur.fetchall()]
+
+    def set_rule(self, rule):
+        r = self.get_rule(rule.key)
+        if r == None:
+            self.add_rule(rule)
+        else:
+            with closing(self._connect_db()) as db:
+                db.execute("""
+                update rules set type=?, valid_period=?, check_interval=?, params=?, checker=?, update_id=(select ifnull(max(update_id), 0)+1 from rules)
+                where key=?
+                """, (rule.type, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker, rule.key))
+                db.commit()
+
     def add_check(self, check):
         with closing(self._connect_db()) as db:
 
@@ -126,7 +164,7 @@ class Database:
             """, (check.rule_key, check.time, self.status_to_int[check.status], check.msg))
             db.commit()
 
-    def _get_checks(self):
+    def status_data(self):
         with closing(self._connect_db()) as db:
             cur = db.execute("""
                 select c1.rule_key, c1.time
@@ -150,20 +188,19 @@ class Database:
             ret = []
             for row in cur.fetchall():
                 key, status, time = row[0], self.int_to_status[row[1]], row[3]
+                print("getting rule {}".format(key))
                 rule = self.get_rule(key)
                 print("{}".format(time))
                 print("{}".format(type(time)))
-                if now() - time > datetime.timedelta(rule.valid_period):
-                    status = 'unknown'
+                if now() - time > datetime.timedelta(0, rule.valid_period):
+                    status = 'expired'
 
                 ret.append({'key': row[0], 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
             return ret
 
-    def status(self):
-        checks = self._get_checks()
-        for check in checks:
-            print(check)
-        return checks
+    def rule_config_data(self):
+        rules = self.get_rules()
+        return [rule.dict() for rule in rules]
 
     def _connect_db(self):
         return sqlite3.connect(self.filename, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
@@ -192,7 +229,6 @@ def main():
 
     client_thread = threading.Thread(target=client_listener, args=(socket_client, db))
     client_thread.start()
-
 
 
 if __name__ == '__main__':
