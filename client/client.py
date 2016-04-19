@@ -30,8 +30,11 @@ def status(socket):
         print("Status:")
         print("=======")
         for row in res['data']:
+            message = row['message'].replace("\n", " ")
+            if len(message) > 30:
+                message = message[:30]+"..."
             times = humanize.naturaltime(datetime.fromtimestamp(row['time']), "%Y-%m-%d %H:%M")
-            print("{:30s}   {:5s}   {}   {}".format(row['key'], row['status'], times, row['message']))
+            print("{:30s}   {:5s}   {}   {}".format(row['key'], row['status'], times, message))
     else:
         print("Error: {}".format(res['message']))
 
