@@ -195,7 +195,19 @@ class Database:
                 if now() - time > datetime.timedelta(0, rule.valid_period):
                     status = 'expired'
 
-                ret.append({'key': row[0], 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
+                ret.append({'key': key, 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
+
+
+            # append rules that don't have any data yet
+            cur = db.execute("""
+                select r.key from rules r
+                left join checks c
+                on (r.key = c.rule_key)
+                where c.id is null
+            """)
+            for row in cur.fetchall():
+                key = row[0]
+                ret.append({'key': key, 'status': 'nodata', 'message': "No data on this rule yet", 'time': now().timestamp(), 'last_successful': None})
             return ret
 
     def rule_config_data(self):
