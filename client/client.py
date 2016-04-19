@@ -31,8 +31,8 @@ def status(socket):
         print("=======")
         for row in res['data']:
             message = row['message'].replace("\n", " ")
-            if len(message) > 30:
-                message = message[:30]+"..."
+            if len(message) > 43:
+                message = message[:40]+"..."
             times = humanize.naturaltime(datetime.fromtimestamp(row['time']), "%Y-%m-%d %H:%M")
             print("{:30s}   {:15s}   {:20s}   {}".format(row['key'], row['status'], times, message))
     else:
@@ -75,7 +75,6 @@ def main():
     context = zmq.Context(1)
     socket = context.socket(zmq.REQ)
     host = "tcp://{}:{}".format(config['server_host'], config['server_port'])
-    print("connecting to host {}".format(host))
     socket.connect(host)
 
     cmd = sys.argv[1]

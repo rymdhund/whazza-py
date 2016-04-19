@@ -86,7 +86,11 @@ def main():
                 print("running {}".format(rule['type']))
                 if rule['type'] in cmds:
                     cmd = cmds[rule['type']]
-                    status, message = cmd(rule['params'])
+                    try:
+                        status, message = cmd(rule['params'])
+                    except Exception as e:
+                        print("WARNING: caught exception during check, {}".format(e))
+                        status, message = 'fail', "Exception during check: {}".format(str(e))
                     result_msg = {'key': rule['key'], 'status': status, 'msg': message, 'checker_id': config['checker_id']}
                 else:
                     print("WARNING: Couldn't find command for type '{}'".format(rule['type']))
