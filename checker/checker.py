@@ -31,6 +31,28 @@ def send_msg(socket, msg):
 def now():
     return time.time()
 
+
+class Rules:
+    def __init__(self):
+        self.rules = []
+
+    def add(self, rule):
+        if self.has_key(rule['key']):
+            self.rm(rule['key'])
+        self.rules.append(rule)
+
+    def has_key(self, key):
+        for r in self.rules:
+            if key == r['key']:
+                return True
+        return False
+
+    def rm(self, key):
+        for r in self.rules:
+            if key == r['key']:
+                self.rules.remove(r)
+
+
 def main():
     context = zmq.Context(1)
     socket = context.socket(zmq.REQ)
@@ -40,10 +62,12 @@ def main():
 
     # check-in every 5 min by default
     check_in_key = 'checkers/{}/check-in'.format(config['checker_id'])
-    rules = [{'type': 'check-in', 'key': check_in_key, 'valid_period': 15*60, 'check_interval': 5*60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0}]
+    rules = Rules()
+    rules.add({'type': 'check-in', 'key': check_in_key, 'valid_period': 15*60, 'check_interval': 5*60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0})
 
     # keep track of when the checks were run
     last_run = {}
+    max_update_id = 0
 
     while(1):
         cmds = {
@@ -57,28 +81,35 @@ def main():
 
         new_rules = None
         print("Checking for something to do")
-        for rule in rules:
+        for rule in rules.rules:
             if now() - last_run.get(rule['key'], 0) >= rule['check_interval']:
                 print("running {}".format(rule['type']))
                 if rule['type'] in cmds:
                     cmd = cmds[rule['type']]
                     status, message = cmd(rule['params'])
                     result_msg = {'key': rule['key'], 'status': status, 'msg': message, 'checker_id': config['checker_id']}
-                    response = send_msg(socket, result_msg)
-                    rule_config = response.get('rule-config', [])
-                    if rule_config != []:
-                        print("Info: updating config")
-                        new_rules = rule_config
                 else:
-                    print("ERROR: Couldn't find command '{}'".format(rule['type']))
+                    print("WARNING: Couldn't find command for type '{}'".format(rule['type']))
+                    # maybe add a special status (panic?) for these "meta" fails?
+                    result_msg = {'key': rule['key'], 'status': 'fail', 'msg': "Couldn't find command for type '{}'".format(rule['type']), 'checker_id': config['checker_id']}
+                msg = result_msg
+                msg['max_update_id'] = max_update_id
+                response = send_msg(socket, msg)
+                rule_config = response.get('rule-config', [])
+                if rule_config != []:
+                    print("Info: updating config")
+                    new_rules = rule_config
 
                 last_run[rule['key']] = now()
 
         if new_rules != None:
-            rules = new_rules
-            print("new rules: {}".format(rules))
-
-        time.sleep(10)
+            for rule in new_rules:
+                rules.add(rule)
+                print("INFO: Updated rule {}".format(rule['key']))
+                if rule['update_id'] > max_update_id:
+                    max_update_id = rule['update_id']
+        else:
+            time.sleep(10)
 
 if __name__ == '__main__':
     main()

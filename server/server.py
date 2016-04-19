@@ -51,7 +51,7 @@ def checker_listener(socket, db):
                 print("Warning: unknown check for '{}'".format(check.rule_key))
 
         #  Send reply back to client
-        new_rules = [rule.dict() for rule in db.get_new_rules(checker, 0)] # TODO: get last update id from client
+        new_rules = [rule.dict() for rule in db.get_new_rules(checker, data['max_update_id'])] # TODO: get last update id from checker
         socket.send(json.dumps({'rule-config': new_rules}).encode())
 
 def client_listener(socket, db):
