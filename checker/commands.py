@@ -1,4 +1,5 @@
 from git import Repo
+import subprocess
 
 def port_scan(conf):
     target_ip = gethostbyname(conf['target'] or 'localhost')
@@ -41,3 +42,16 @@ def check_git_status(conf):
 
 def test_command(conf):
     return (conf.get('status', "good"), conf.get('message', ""))
+
+def process_running(conf):
+    if not 'name' in conf.keys():
+        return ('fail', 'Check_process conf does not contain name')
+    try:
+        cmd = ["/usr/bin/pgrep", "-f", conf['name']]
+        output = subprocess.check_call(cmd)
+        return ('good', 'Process is running')
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 1:
+            return ('fail', 'No matched process')
+        else:
+            return ('fail', 'The pgrep command failed with status {}'.format(e.returncode))
