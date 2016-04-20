@@ -72,7 +72,6 @@ def main():
     while(1):
         cmds = {
             'debian-update':        commands.check_debian_update,
-            'debian-update2':       commands.check_debian_update2,
             'portscan':             commands.port_scan,
             'git-status':           commands.check_git_status,
             'test':                 commands.test_command,

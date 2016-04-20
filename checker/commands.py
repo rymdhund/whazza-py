@@ -1,5 +1,5 @@
-from git import Repo
 import subprocess
+import datetime
 
 def port_scan(conf):
     target_ip = gethostbyname(conf['target'] or 'localhost')
@@ -19,22 +19,25 @@ def port_scan(conf):
 
     return {'open_ports': ports}
 
-
 def check_debian_update(conf):
-    output = subprocess.check_output("apt-get --dry-run --show-upgraded -V upgrade | sed -n '/The following packages will be upgraded/,/upgraded, [0-9]* newly/p'", shell=True)
-    print(output.decode('ascii'))
-    return output.decode('ascii')
+    output = subprocess.check_output(["/usr/bin/stat", "-c", "%Y", "/var/lib/apt/lists"])
+    timestamp = int(output.decode('ascii'))
+    now = datetime.datetime.now().timestamp();
+    if now - timestamp > 24*3600:
+        return 'fail', "apt-get update hasn't been run in 24h"
 
-def check_debian_update2(conf):
-    import apt
-    import apt.progress
-    cache = apt.Cache()
-    cache.update()
-    cache.open(None)
-    print(cache.get_changes())
-    return {}
+    output = subprocess.check_output(["/usr/bin/apt", "list", "--upgradable"])
+    updates = []
+    for line in output.decode('ascii').splitlines():
+        if line not in ["Listing...", "Done", ""]:
+            updates.append(line)
+    if len(updates) == 0:
+        return 'good', ""
+    else:
+        return 'fail', "These packages can be updated:\n".join(updates)
 
 def check_git_status(conf):
+    from git import Repo
     path = conf['path']
     r = Repo(path)
     status = "fail" if r.is_dirty() else "good"
