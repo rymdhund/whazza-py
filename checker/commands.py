@@ -45,7 +45,7 @@ def test_command(conf):
 
 def process_running(conf):
     if not 'name' in conf.keys():
-        return ('fail', 'Check_process conf does not contain name')
+        return ('fail', 'Process_running conf does not contain name')
     try:
         cmd = ["/usr/bin/pgrep", "-f", conf['name']]
         output = subprocess.check_call(cmd)
@@ -55,3 +55,17 @@ def process_running(conf):
             return ('fail', 'No matched process')
         else:
             return ('fail', 'The pgrep command failed with status {}'.format(e.returncode))
+
+def container_running(conf):
+    if not 'name' in conf.keys():
+        return ('fail', 'Container_running conf does not contain name')
+    from docker import Client
+    cli = Client(base_url='unix://var/run/docker.sock')
+    cnts = cli.containers()
+    for cnt in cnts:
+        for name in cnt['Names']:
+            if name == conf['name']:
+                return ('good', "")
+            if len(name) > 0 and name[0] == '/' and name[1:] == conf['name']:
+                return ('good', "")
+    return ('fail', 'No matched container')

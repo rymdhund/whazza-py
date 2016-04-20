@@ -3,3 +3,4 @@ PyYAML
 GitPython
 pyzmq
 humanize
+docker-py
