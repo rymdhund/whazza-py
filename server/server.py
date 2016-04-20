@@ -68,9 +68,10 @@ def client_listener(socket, db):
             msg = {'status': 'ok', 'data': db.rule_config_data()}
             socket.send(json.dumps(msg).encode())
         elif data['cmd'] == 'set-rules':
+            rules = []
             for rule in data['data']:
-                print("setting rule {}".format(rule))
-                db.set_rule(Rule(rule['type'], rule['key'], rule['valid_period'], rule['check_interval'], rule['params'], rule['checker'], -1))
+                rules.append(Rule(rule['type'], rule['key'], rule['valid_period'], rule['check_interval'], rule['params'], rule['checker'], -1))
+            db.update_rules(rules)
             msg = {'status': 'ok', 'data': db.rule_config_data()}
             socket.send(json.dumps(msg).encode())
         else:
@@ -118,25 +119,32 @@ class Database:
         params = json.loads(row[4])
         return Rule(row[0], row[1], row[2], row[3], params, row[5], row[6])
 
+    def _get_rule(self, key, db):
+        cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where key = ?", (key,))
+        res = cur.fetchone()
+        if res != None:
+            return self._row_to_rule(res)
+        return None
+
     def get_rule(self, key):
         with closing(self._connect_db()) as db:
-            cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where key = ?", (key,))
-            res = cur.fetchone()
-            if res != None:
-                return self._row_to_rule(res)
-            return None
+            return self._get_rule(key, db)
 
     def get_rules(self):
         with closing(self._connect_db()) as db:
             cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules")
             return [self._row_to_rule(row) for row in cur.fetchall()]
 
+
+    def _add_rule(self, rule, db):
+        db.execute("""
+        insert into rules (type, key, valid_period, check_interval, params, checker, update_id)
+        values (?, ?, ?, ?, ?, ?, (select ifnull(max(update_id), 0)+1 from rules))
+        """, (rule.type, rule.key, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker))
+
     def add_rule(self, rule):
         with closing(self._connect_db()) as db:
-            db.execute("""
-            insert into rules (type, key, valid_period, check_interval, params, checker, update_id)
-            values (?, ?, ?, ?, ?, ?, (select ifnull(max(update_id), 0)+1 from rules))
-            """, (rule.type, rule.key, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker))
+            self._add_rule(rule, db)
             db.commit()
 
     def get_new_rules(self, checker, update_id):
@@ -144,17 +152,26 @@ class Database:
             cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where checker=? and update_id > ?", (checker, update_id))
             return [self._row_to_rule(row) for row in cur.fetchall()]
 
-    def set_rule(self, rule):
-        r = self.get_rule(rule.key)
-        if r == None:
-            self.add_rule(rule)
-        else:
-            with closing(self._connect_db()) as db:
-                db.execute("""
-                update rules set type=?, valid_period=?, check_interval=?, params=?, checker=?, update_id=(select ifnull(max(update_id), 0)+1 from rules)
-                where key=?
-                """, (rule.type, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker, rule.key))
-                db.commit()
+    def _update_rule(self, rule, db):
+        db.execute("""
+        update rules set type=?, valid_period=?, check_interval=?, params=?, checker=?, update_id=(select ifnull(max(update_id), 0)+1 from rules)
+        where key=?
+        """, (rule.type, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker, rule.key))
+
+    def update_rules(self, rules):
+        with closing(self._connect_db()) as db:
+            # remove all rules
+            db.execute("""
+            update rules set type='none', update_id=(select ifnull(max(update_id), 0)+1 from rules)
+            """)
+
+            for rule in rules:
+                r = self._get_rule(rule.key, db)
+                if r == None:
+                    self._add_rule(rule, db)
+                else:
+                    self._update_rule(rule, db)
+            db.commit()
 
     def add_check(self, check):
         with closing(self._connect_db()) as db:
@@ -166,6 +183,7 @@ class Database:
 
     def status_data(self):
         with closing(self._connect_db()) as db:
+            # Find last successful check for each rule
             cur = db.execute("""
                 select c1.rule_key, c1.time
                 from (select * from checks where status = 1) c1
@@ -178,32 +196,32 @@ class Database:
                 last_successful[row[0]] = row[1].timestamp()
             cur.close()
 
+            # Find last check for each rule
             cur = db.execute("""
                 select c1.rule_key, c1.status, c1.msg, c1.time
                 from checks c1
                 left join checks c2
                 on (c1.rule_key = c2.rule_key and c1.time < c2.time)
-                where c2.id is null
+                left join rules r
+                on (c1.rule_key = r.key)
+                where c2.id is null and r.type != 'none'
             """)
             ret = []
             for row in cur.fetchall():
                 key, status, time = row[0], self.int_to_status[row[1]], row[3]
-                print("getting rule {}".format(key))
                 rule = self.get_rule(key)
-                print("{}".format(time))
-                print("{}".format(type(time)))
                 if now() - time > datetime.timedelta(0, rule.valid_period):
                     status = 'expired'
 
                 ret.append({'key': key, 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
 
 
-            # append rules that don't have any data yet
+            # append rules that don't have any check data yet
             cur = db.execute("""
                 select r.key from rules r
                 left join checks c
                 on (r.key = c.rule_key)
-                where c.id is null
+                where c.id is null and r.type != 'none'
             """)
             for row in cur.fetchall():
                 key = row[0]

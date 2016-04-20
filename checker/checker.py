@@ -109,10 +109,14 @@ def main():
 
         if new_rules != None:
             for rule in new_rules:
-                rules.add(rule)
-                print("INFO: Updated rule {}".format(rule['key']))
-                if rule['update_id'] > max_update_id:
-                    max_update_id = rule['update_id']
+                if rule['type'] == 'none':
+                    rules.rm(rule['key'])
+                    print("INFO: Removed rule {}".format(rule['key']))
+                else:
+                    rules.add(rule)
+                    print("INFO: Updated rule {}".format(rule['key']))
+                    if rule['update_id'] > max_update_id:
+                        max_update_id = rule['update_id']
         else:
             time.sleep(10)
 
