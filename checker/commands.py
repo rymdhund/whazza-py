@@ -1,6 +1,9 @@
 import subprocess
 import datetime
 
+# The commands are to be named after what they are asserting
+# e.g. the "git_clean" command asserts that a git repo is clean and not dirty
+
 def port_scan(conf):
     target_ip = gethostbyname(conf['target'] or 'localhost')
     print("Starting scan on host {}".format(target_ip))
@@ -19,7 +22,7 @@ def port_scan(conf):
 
     return {'open_ports': ports}
 
-def check_debian_update(conf):
+def debian_up_to_date(conf):
     output = subprocess.check_output(["/usr/bin/stat", "-c", "%Y", "/var/lib/apt/lists"])
     timestamp = int(output.decode('ascii'))
     now = datetime.datetime.now().timestamp();
@@ -36,14 +39,14 @@ def check_debian_update(conf):
     else:
         return 'fail', "These packages can be updated:\n".join(updates)
 
-def check_git_status(conf):
+def git_clean(conf):
     from git import Repo
     path = conf['path']
     r = Repo(path)
     status = "fail" if r.is_dirty() else "good"
     return (status, r.git.status())
 
-def test_command(conf):
+def test(conf):
     return (conf.get('status', "good"), conf.get('message', ""))
 
 def process_running(conf):
@@ -52,7 +55,7 @@ def process_running(conf):
     try:
         cmd = ["/usr/bin/pgrep", "-f", conf['name']]
         output = subprocess.check_call(cmd)
-        return ('good', 'Process is running')
+        return ('good', "")
     except subprocess.CalledProcessError as e:
         if e.returncode == 1:
             return ('fail', 'No matched process')

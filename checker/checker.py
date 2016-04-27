@@ -71,11 +71,11 @@ def main():
 
     while(1):
         cmds = {
-            'debian-update':        commands.check_debian_update,
-            'portscan':             commands.port_scan,
-            'git-status':           commands.check_git_status,
-            'test':                 commands.test_command,
-            'check-in':             commands.test_command,
+            'debian-up-to-date':    commands.debian_up_to_date,
+            'port-scan':            commands.port_scan,
+            'git-clean':            commands.git_clean,
+            'test':                 commands.test,
+            'check-in':             commands.test,
             'process-running':      commands.process_running,
             'container-running':    commands.container_running
         }
