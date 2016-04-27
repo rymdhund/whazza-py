@@ -69,10 +69,13 @@ def client_listener(socket, db):
             socket.send(json.dumps(msg).encode())
         elif data['cmd'] == 'set-rules':
             rules = []
-            for rule in data['data']:
-                rules.append(Rule(rule['type'], rule['key'], rule['valid_period'], rule['check_interval'], rule['params'], rule['checker'], -1))
-            db.update_rules(rules)
-            msg = {'status': 'ok', 'data': db.rule_config_data()}
+            try:
+                for rule in data['data']:
+                    rules.append(Rule(rule['type'], rule['key'], rule['check_interval'] * 3, rule['check_interval'], rule['params'], rule['checker'], -1))
+                db.update_rules(rules)
+                msg = {'status': 'ok'}
+            except KeyError as e:
+                msg = {'status': 'error', 'message': str(e)}
             socket.send(json.dumps(msg).encode())
         else:
             msg = {"status": "error", "message": "Unknown command"}
@@ -91,6 +94,9 @@ class Rule:
     def dict(self):
         return {'type': self.type, 'key': self.key, 'valid_period': self.valid_period, 'check_interval': self.check_interval,
                 'params': self.params, 'checker': self.checker, 'update_id': self.update_id}
+
+    def client_dict(self):
+        return {'type': self.type, 'key': self.key, 'check_interval': self.check_interval, 'params': self.params, 'checker': self.checker}
 
 class Check:
     def __init__(self, rule_key, status, msg, time):
@@ -230,7 +236,7 @@ class Database:
 
     def rule_config_data(self):
         rules = self.get_rules()
-        return [rule.dict() for rule in rules]
+        return [rule.client_dict() for rule in rules]
 
     def _connect_db(self):
         return sqlite3.connect(self.filename, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
