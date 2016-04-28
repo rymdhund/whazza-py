@@ -236,7 +236,7 @@ class Database:
 
     def rule_config_data(self):
         rules = self.get_rules()
-        return [rule.client_dict() for rule in rules]
+        return [rule.client_dict() for rule in rules if rule.type != 'none']
 
     def _connect_db(self):
         return sqlite3.connect(self.filename, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
