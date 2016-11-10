@@ -1,11 +1,8 @@
-#import requests
 import yaml
 import sys
-import subprocess
 import zmq
 import json
 import time
-from git import Repo
 
 import commands
 
@@ -27,6 +24,7 @@ def send_msg(socket, msg):
     socket.send(json.dumps(msg).encode())
     res = json.loads(socket.recv().decode())
     return res
+
 
 def now():
     return time.time()
@@ -63,7 +61,7 @@ def main():
     # check-in every 5 min by default
     check_in_key = 'checkers/{}/check-in'.format(config['checker_id'])
     rules = Rules()
-    rules.add({'type': 'check-in', 'key': check_in_key, 'valid_period': 15*60, 'check_interval': 5*60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0})
+    rules.add({'type': 'check-in', 'key': check_in_key, 'valid_period': 15 * 60, 'check_interval': 5 * 60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0})
 
     # keep track of when the checks were run
     last_run = {}
@@ -71,13 +69,13 @@ def main():
 
     while(1):
         cmds = {
-            'debian-up-to-date':    commands.debian_up_to_date,
-            'port-scan':            commands.port_scan,
-            'git-clean':            commands.git_clean,
-            'test':                 commands.test,
-            'check-in':             commands.test,
-            'process-running':      commands.process_running,
-            'container-running':    commands.container_running
+            'debian-up-to-date': commands.debian_up_to_date,
+            'port-scan': commands.port_scan,
+            'git-clean': commands.git_clean,
+            'test': commands.test,
+            'check-in': commands.test,
+            'process-running': commands.process_running,
+            'container-running': commands.container_running
         }
 
         new_rules = None
@@ -107,7 +105,7 @@ def main():
 
                 last_run[rule['key']] = now()
 
-        if new_rules != None:
+        if new_rules is not None:
             for rule in new_rules:
                 if rule['type'] == 'none':
                     rules.rm(rule['key'])

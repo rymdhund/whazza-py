@@ -1,13 +1,15 @@
-import time
 import zmq
 import json
 import datetime
 import threading
-import copy
 import sqlite3
 import os
 import jsonschema
+import yaml
+import sys
+
 from contextlib import closing
+from datetime.datetime import now
 
 config = {}
 try:
@@ -21,20 +23,18 @@ except yaml.scanner.ScannerError:
 
 config.setdefault('database', 'db.sqlite3')
 
-def now():
-    return datetime.datetime.now()
-
 
 class ValidationError(Exception):
     pass
+
 
 def parse_check_input(byts):
     schema = {
         "type": "object",
         "properties": {
             "checker_id": {"type": "string"},
-            "key" : {"type": "string"},
-            "status" : {"enum" : ["good", "fail"]},
+            "key": {"type": "string"},
+            "status": {"enum": ["good", "fail"]},
             "msg": {"type": "string"},
             "max_update_id": {"type": "number"},
         },
@@ -54,7 +54,7 @@ def parse_check_input(byts):
     except UnicodeError as e:
         print("WARNING: couldn't decode utf8: {}".format(str(e)))
         raise ValidationError("Error validating data: couldn't parse utf8")
-    except JSONDecodeError as e:
+    except json.JSONDecodeError as e:
         print("WARNING: malformed json data from checker: {}".format(str(e)))
         raise ValidationError("Error validating data: malformed json")
     except jsonschema.ValidationError as e:
@@ -75,14 +75,14 @@ def checker_listener(socket, db):
         check = Check(key, status, msg, now())
 
         rule = db.get_rule(check.rule_key)
-        if rule != None:
+        if rule is not None:
             db.add_check(check)
         else:
             key_parts = check.rule_key.split('/')
             if len(key_parts) == 3 and key_parts[0] == 'checkers' and key_parts[-1] == 'check-in':
                 if key_parts[1] == checker:
                     print("First check-in from {}, creating rule".format(checker))
-                    rule = Rule('check-in', check.rule_key, 15*60, 5*60, {}, checker, -1)
+                    rule = Rule('check-in', check.rule_key, 15 * 60, 5 * 60, {}, checker, -1)
                     db.add_rule(rule)
                     db.add_check(check)
                 else:
@@ -110,16 +110,17 @@ def parse_client_input(byts):
         print("Received client request: {}".format(string))
         data = json.loads(string)
         jsonschema.validate(data, schema)
-        return data['cmd'], data.get('data',{})
+        return data['cmd'], data.get('data', {})
     except UnicodeError as e:
         print("WARNING: couldn't decode utf8: {}".format(str(e)))
         raise ValidationError("Error validating data: couldn't parse utf8")
-    except JSONDecodeError as e:
+    except json.JSONDecodeError as e:
         print("WARNING: malformed json data from checker: {}".format(str(e)))
         raise ValidationError("Error validating data: malformed json")
     except jsonschema.ValidationError as e:
         print("WARNING: json doesn't follow schema: {}".format(str(e)))
         raise ValidationError("Error validating data: json doesn't follow schema")
+
 
 def parse_set_rules_data(data):
     schema = {
@@ -190,6 +191,7 @@ def client_listener(socket, db):
             msg = {"status": "error", "message": "Unknown command"}
             socket.send(json.dumps(msg).encode())
 
+
 class Rule:
     def __init__(self, type, key, valid_period, check_interval, params, checker, update_id):
         self.type = type
@@ -206,6 +208,7 @@ class Rule:
 
     def client_dict(self):
         return {'type': self.type, 'key': self.key, 'check_interval': self.check_interval, 'params': self.params, 'checker': self.checker}
+
 
 class Check:
     def __init__(self, rule_key, status, msg, time):
@@ -237,7 +240,7 @@ class Database:
     def _get_rule(self, key, db):
         cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where key = ?", (key,))
         res = cur.fetchone()
-        if res != None:
+        if res is not None:
             return self._row_to_rule(res)
         return None
 
@@ -249,7 +252,6 @@ class Database:
         with closing(self._connect_db()) as db:
             cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules")
             return [self._row_to_rule(row) for row in cur.fetchall()]
-
 
     def _add_rule(self, rule, db):
         db.execute("""
@@ -282,7 +284,7 @@ class Database:
 
             for rule in rules:
                 r = self._get_rule(rule.key, db)
-                if r == None:
+                if r is None:
                     self._add_rule(rule, db)
                 else:
                     self._update_rule(rule, db)
@@ -330,7 +332,6 @@ class Database:
 
                 ret.append({'key': key, 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
 
-
             # append rules that don't have any check data yet
             cur = db.execute("""
                 select r.key from rules r
@@ -348,7 +349,7 @@ class Database:
         return [rule.client_dict() for rule in rules if rule.type != 'none']
 
     def _connect_db(self):
-        return sqlite3.connect(self.filename, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+        return sqlite3.connect(self.filename, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
 
     def _init_db(self):
         with closing(self._connect_db()) as db:
@@ -356,9 +357,11 @@ class Database:
                 db.cursor().executescript(f.read())
             db.commit()
 
+
 ########
 # Main #
 ########
+
 def main():
     context = zmq.Context()
     socket_checker = context.socket(zmq.REP)

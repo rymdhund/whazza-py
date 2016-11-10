@@ -19,10 +19,12 @@ except yaml.scanner.ScannerError:
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5556)
 
+
 def send_msg(socket, msg):
     socket.send(json.dumps(msg).encode())
     res = json.loads(socket.recv().decode())
     return res
+
 
 def status(socket):
     res = send_msg(socket, {'cmd': "status"})
@@ -32,11 +34,12 @@ def status(socket):
         for row in res['data']:
             message = row['message'].replace("\n", " ")
             if len(message) > 43:
-                message = message[:40]+"..."
+                message = message[:40] + "..."
             times = humanize.naturaltime(datetime.fromtimestamp(row['time']), "%Y-%m-%d %H:%M")
             print("{:30s}   {:15s}   {:20s}   {}".format(row['key'], row['status'], times, message))
     else:
         print("Error: {}".format(res['message']))
+
 
 def dump_rules(socket):
     res = send_msg(socket, {'cmd': 'dump-rules'})
@@ -44,6 +47,7 @@ def dump_rules(socket):
         print(json.dumps(res['data'], sort_keys=True, indent=2))
     else:
         print("Error: {}".format(res['message']))
+
 
 def set_rules(socket, filename):
     inp = ""
@@ -66,6 +70,7 @@ def usage(ret):
     print("  dump-rules")
     print("  set-rules <filename>")
     sys.exit(ret)
+
 
 def main():
     if len(sys.argv) < 2:
