@@ -6,6 +6,7 @@ import threading
 import copy
 import sqlite3
 import os
+import jsonschema
 from contextlib import closing
 
 config = {}
@@ -24,15 +25,54 @@ def now():
     return datetime.datetime.now()
 
 
+class ValidationError(Exception):
+    pass
+
+def parse_check_input(byts):
+    schema = {
+        "type": "object",
+        "properties": {
+            "checker_id": {"type": "string"},
+            "key" : {"type": "string"},
+            "status" : {"enum" : ["good", "fail"]},
+            "msg": {"type": "string"},
+            "max_update_id": {"type": "number"},
+        },
+        "required": ["checker_id", "key", "status", "msg", "max_update_id"],
+        "additionalProperties": False,
+    }
+    try:
+        string = byts.decode()
+        print("Received checker request: {}".format(string))
+        data = json.loads(string)
+        jsonschema.validate(data, schema)
+        return (data['key'],
+                data['status'],
+                data['msg'],
+                data['checker_id'],
+                data['max_update_id'])
+    except UnicodeError as e:
+        print("WARNING: couldn't decode utf8: {}".format(str(e)))
+        raise ValidationError("Error validating data: couldn't parse utf8")
+    except JSONDecodeError as e:
+        print("WARNING: malformed json data from checker: {}".format(str(e)))
+        raise ValidationError("Error validating data: malformed json")
+    except jsonschema.ValidationError as e:
+        print("WARNING: json doesn't follow schema: {}".format(str(e)))
+        raise ValidationError("Error validating data: json doesn't follow schema")
+
+
 def checker_listener(socket, db):
     while True:
-        message = socket.recv().decode()
-        print("Received checker request: %s" % message)
+        byts = socket.recv()
 
-        data = json.loads(message)
+        try:
+            key, status, msg, checker, max_update_id = parse_check_input(byts)
+        except Exception as e:
+            socket.send('{"status": "fail"}'.encode())
+            continue
 
-        check = Check(data['key'], data['status'], data['msg'], now())
-        checker = data['checker_id']
+        check = Check(key, status, msg, now())
 
         rule = db.get_rule(check.rule_key)
         if rule != None:
@@ -51,30 +91,99 @@ def checker_listener(socket, db):
                 print("Warning: unknown check for '{}'".format(check.rule_key))
 
         #  Send reply back to client
-        new_rules = [rule.dict() for rule in db.get_new_rules(checker, data['max_update_id'])] # TODO: get last update id from checker
+        new_rules = [rule.dict() for rule in db.get_new_rules(checker, max_update_id)]
         socket.send(json.dumps({'rule-config': new_rules}).encode())
+
+
+def parse_client_input(byts):
+    schema = {
+        "type": "object",
+        "properties": {
+            "cmd": {"type": "string"},
+            "data": {"type": "object"},
+        },
+        "required": ["cmd"],
+        "additionalProperties": False,
+    }
+    try:
+        string = byts.decode()
+        print("Received client request: {}".format(string))
+        data = json.loads(string)
+        jsonschema.validate(data, schema)
+        return data['cmd'], data.get('data',{})
+    except UnicodeError as e:
+        print("WARNING: couldn't decode utf8: {}".format(str(e)))
+        raise ValidationError("Error validating data: couldn't parse utf8")
+    except JSONDecodeError as e:
+        print("WARNING: malformed json data from checker: {}".format(str(e)))
+        raise ValidationError("Error validating data: malformed json")
+    except jsonschema.ValidationError as e:
+        print("WARNING: json doesn't follow schema: {}".format(str(e)))
+        raise ValidationError("Error validating data: json doesn't follow schema")
+
+def parse_set_rules_data(data):
+    schema = {
+        "type": "object",
+        "properties": {
+            "rules": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string"},
+                        "key": {"type": "string"},
+                        "check_interval": {
+                            "type": "integer",
+                            "minimum": 1,
+                        },
+                        "params": {"type": "object"},
+                        "checker": {"type": "string"},
+                    },
+                },
+            },
+        },
+        "required": ["rules"],
+        "additionalProperties": False,
+    }
+    rules = []
+    try:
+        jsonschema.validate(data, schema)
+        for rule in data['rules']:
+            rules.append(Rule(
+                rule['type'],
+                rule['key'],
+                rule['check_interval'] * 3,
+                rule['check_interval'],
+                rule['params'],
+                rule['checker'], -1))
+    except jsonschema.ValidationError as e:
+        print("WARNING: in data from client, json doesn't follow schema: {}".format(str(e)))
+        raise ValidationError("Error validating data: json doesn't follow schema")
+    return rules
+
 
 def client_listener(socket, db):
     while True:
-        message = socket.recv().decode()
-        print("Received client request: %s" % message)
+        byts = socket.recv()
 
-        data = json.loads(message)
+        try:
+            cmd, data = parse_client_input(byts)
+        except Exception as e:
+            socket.send('{"status": "error", "message": "bad input"}'.encode())
+            continue
 
-        if data['cmd'] == 'status':
+        if cmd == 'status':
             msg = {'status': 'ok', 'data': db.status_data()}
             socket.send(json.dumps(msg).encode())
-        elif data['cmd'] == 'dump-rules':
+        elif cmd == 'dump-rules':
             msg = {'status': 'ok', 'data': db.rule_config_data()}
             socket.send(json.dumps(msg).encode())
-        elif data['cmd'] == 'set-rules':
-            rules = []
+        elif cmd == 'set-rules':
             try:
-                for rule in data['data']:
-                    rules.append(Rule(rule['type'], rule['key'], rule['check_interval'] * 3, rule['check_interval'], rule['params'], rule['checker'], -1))
+                rules = parse_set_rules_data(data)
                 db.update_rules(rules)
                 msg = {'status': 'ok'}
-            except KeyError as e:
+            except Exception as e:
                 msg = {'status': 'error', 'message': str(e)}
             socket.send(json.dumps(msg).encode())
         else:

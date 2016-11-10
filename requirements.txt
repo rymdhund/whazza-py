@@ -4,3 +4,4 @@ GitPython
 pyzmq
 humanize
 docker-py
+jsonschema

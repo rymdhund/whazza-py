@@ -50,10 +50,9 @@ def set_rules(socket, filename):
     for line in fileinput.input(filename):
         inp += line
 
-    # for validation
-    data = json.loads(inp)
+    rules = json.loads(inp)
 
-    res = send_msg(socket, {'cmd': 'set-rules', 'data': data})
+    res = send_msg(socket, {'cmd': 'set-rules', 'data': {'rules': rules}})
     if res['status'] == 'ok':
         print("updated")
     else:
