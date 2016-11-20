@@ -7,9 +7,10 @@ import os
 import jsonschema
 import yaml
 import sys
+import logging
 
 from contextlib import closing
-from datetime.datetime import now
+from zmq.auth.thread import ThreadAuthenticator
 
 config = {}
 try:
@@ -22,10 +23,15 @@ except yaml.scanner.ScannerError:
     sys.exit(1)
 
 config.setdefault('database', 'db.sqlite3')
+config.setdefault('keys_dir', 'keys')
 
 
 class ValidationError(Exception):
     pass
+
+
+def now():
+    return datetime.datetime.now()
 
 
 def parse_check_input(byts):
@@ -62,13 +68,39 @@ def parse_check_input(byts):
         raise ValidationError("Error validating data: json doesn't follow schema")
 
 
-def checker_listener(socket, db):
+def setup_socket(auth_keys_dir, bind):
+    # New context, to be able to do different auth
+    ctx = zmq.Context()
+    auth = ThreadAuthenticator(ctx)
+    auth.start()
+
+    # Setup auth
+    auth.configure_curve(domain='*', location=auth_keys_dir)
+    server_public, server_secret = zmq.auth.load_certificate(config['keyfile'])
+
+    # Configure and bind socket
+    socket = ctx.socket(zmq.REP)
+    socket.curve_secretkey = server_secret
+    socket.curve_publickey = server_public
+    socket.curve_server = True
+    socket.bind(bind)
+
+    return socket
+
+
+def checker_listener(db):
+    auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_checkers')
+    socket = setup_socket(auth_keys_dir, "tcp://*:5555")
+
+    logging.info("Starting checker listener")
     while True:
         byts = socket.recv()
+        logging.debug("Got {} bytes".format(len(byts)))
 
         try:
             key, status, msg, checker, max_update_id = parse_check_input(byts)
         except Exception as e:
+            logging.warn("Couldn't parse message")
             socket.send('{"status": "fail"}'.encode())
             continue
 
@@ -163,7 +195,11 @@ def parse_set_rules_data(data):
     return rules
 
 
-def client_listener(socket, db):
+def client_listener(db):
+    auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_clients')
+    socket = setup_socket(auth_keys_dir, "tcp://*:5556")
+
+    logging.info("Starting client listener")
     while True:
         byts = socket.recv()
 
@@ -358,24 +394,51 @@ class Database:
             db.commit()
 
 
+def init_cert():
+    ''' Generate certificate files'''
+    keys_dir = config['keys_dir']
+    auth_checkers_dir = os.path.join(keys_dir, 'authorized_checkers')
+    auth_clients_dir = os.path.join(keys_dir, 'authorized_clients')
+
+    config['keyfile'] = keyfile = os.path.join(keys_dir, "server.key_secret")
+
+    if not (os.path.exists(keyfile)):
+        logging.info("No server certificate found, generating")
+
+        try:
+            os.mkdir(keys_dir)
+        except FileExistsError as e:
+            pass
+
+        try:
+            os.mkdir(auth_checkers_dir)
+        except FileExistsError as e:
+            pass
+
+        try:
+            os.mkdir(auth_clients_dir)
+        except FileExistsError as e:
+            pass
+
+        # create new keys in certificates dir
+        zmq.auth.create_certificates(keys_dir, "server")
+
+
 ########
 # Main #
 ########
 
 def main():
-    context = zmq.Context()
-    socket_checker = context.socket(zmq.REP)
-    socket_checker.bind("tcp://*:5555")
+    logging.basicConfig(level=logging.DEBUG)
 
-    socket_client = context.socket(zmq.REP)
-    socket_client.bind("tcp://*:5556")
+    init_cert()
 
     db = Database(config['database'])
 
-    checker_thread = threading.Thread(target=checker_listener, args=(socket_checker, db))
+    checker_thread = threading.Thread(target=checker_listener, args=(db,))
     checker_thread.start()
 
-    client_thread = threading.Thread(target=client_listener, args=(socket_client, db))
+    client_thread = threading.Thread(target=client_listener, args=(db,))
     client_thread.start()
 
 

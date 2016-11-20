@@ -1,3 +1,5 @@
+import os
+import logging
 import yaml
 import sys
 import zmq
@@ -18,6 +20,7 @@ except yaml.scanner.ScannerError:
 
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5556)
+config.setdefault('keys_dir', 'keys')
 
 
 def send_msg(socket, msg):
@@ -72,13 +75,47 @@ def usage(ret):
     sys.exit(ret)
 
 
+def init_cert():
+    ''' Generate certificate files if they don't exist '''
+    from zmq import auth
+
+    key_filename = "client"
+    key_path = os.path.join(config['keys_dir'], key_filename)
+    config['keyfile'] = keyfile = "{}.key_secret".format(key_path)
+
+    if not (os.path.exists(keyfile)):
+        logging.info("No client certificate found, generating")
+        keys_dir = config['keys_dir']
+        try:
+            os.mkdir(keys_dir)
+        except FileExistsError as e:
+            pass
+
+        # create new keys in certificates dir
+        auth.create_certificates(keys_dir, key_filename)
+
+
 def main():
     if len(sys.argv) < 2:
         usage(1)
 
+    init_cert()
+
+    # setup certificates
+    client_public, client_secret = zmq.auth.load_certificate(config['keyfile'])
+    server_public_file = os.path.join(config['keys_dir'], "server.key")
+    server_public, _ = zmq.auth.load_certificate(server_public_file)
+
+    # setup socket
     context = zmq.Context(1)
     socket = context.socket(zmq.REQ)
+    socket.curve_secretkey = client_secret
+    socket.curve_publickey = client_public
+    socket.curve_serverkey = server_public
+
+    # connect
     host = "tcp://{}:{}".format(config['server_host'], config['server_port'])
+    logging.debug("connecting to host {}".format(host))
     socket.connect(host)
 
     cmd = sys.argv[1]

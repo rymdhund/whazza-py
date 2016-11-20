@@ -3,6 +3,8 @@ import sys
 import zmq
 import json
 import time
+import os
+import logging
 
 import commands
 
@@ -18,6 +20,7 @@ except yaml.scanner.ScannerError:
 
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5555)
+config.setdefault('keys_dir', 'keys')
 
 
 def send_msg(socket, msg):
@@ -51,11 +54,48 @@ class Rules:
                 self.rules.remove(r)
 
 
+def init_cert():
+    ''' Generate certificate files if they don't exist '''
+    from zmq import auth
+
+    key_filename = "checker_{}".format(config['checker_id'])
+    key_path = os.path.join(config['keys_dir'], key_filename)
+    config['keyfile'] = keyfile = "{}.key_secret".format(key_path)
+
+    if not (os.path.exists(keyfile)):
+        logging.info("No client certificate found, generating")
+        keys_dir = config['keys_dir']
+        try:
+            os.mkdir(keys_dir)
+        except FileExistsError as e:
+            pass
+
+        # create new keys in certificates dir
+        auth.create_certificates(keys_dir, key_filename)
+
+
 def main():
+    logging.basicConfig(level=logging.DEBUG)
+    logging.info("starting")
+
+    init_cert()
+
+    # setup certificates
+    client_public, client_secret = zmq.auth.load_certificate(config['keyfile'])
+    server_public_file = os.path.join(config['keys_dir'], "server.key")
+    server_public, _ = zmq.auth.load_certificate(server_public_file)
+
+    # setup socket
     context = zmq.Context(1)
     socket = context.socket(zmq.REQ)
+    socket.zap_domain = b"checker"
+    socket.curve_secretkey = client_secret
+    socket.curve_publickey = client_public
+    socket.curve_serverkey = server_public
+
+    # connect
     host = "tcp://{}:{}".format(config['server_host'], config['server_port'])
-    print("connecting to host {}".format(host))
+    logging.info("connecting to host {}".format(host))
     socket.connect(host)
 
     # check-in every 5 min by default
@@ -119,4 +159,6 @@ def main():
             time.sleep(10)
 
 if __name__ == '__main__':
+    if zmq.zmq_version_info() < (4, 0):
+        raise RuntimeError("Security is not supported in libzmq version < 4.0. libzmq version {0}".format(zmq.zmq_version()))
     main()
