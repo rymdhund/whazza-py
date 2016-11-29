@@ -83,3 +83,21 @@ def container_running(conf):
             if len(name) > 0 and name[0] == '/' and name[1:] == conf['name']:
                 return ('good', "")
     return ('fail', 'No matched container')
+
+
+def host_is_up(conf):
+    if 'type' not in conf.keys():
+        return ('fail', "host_is_up: conf does not contain type")
+    if 'host' not in conf.keys():
+        return ('fail', "host_is_up: conf does not contain host")
+    if conf['type'] not in ('http',):
+        return ('fail', "host_is_up: unrecognized type: {}".format(conf['type']))
+
+    try:
+        import requests
+        r = requests.get(conf['host'])
+        if r.status_code != 200:
+            return ('fail', "Status code {}".format(r.status_code))
+        return ('good', "")
+    except ConnectionError as e:
+        return ('fail', "Connection failed: {}".format(e))

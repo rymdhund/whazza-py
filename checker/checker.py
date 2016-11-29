@@ -115,7 +115,8 @@ def main():
             'test': commands.test,
             'check-in': commands.test,
             'process-running': commands.process_running,
-            'container-running': commands.container_running
+            'container-running': commands.container_running,
+            'host-is-up': commands.host_is_up,
         }
 
         new_rules = None
