@@ -30,13 +30,14 @@ def send_msg(socket, msg):
 
 
 def status(socket):
+    longout = config.get('longout', False)
     res = send_msg(socket, {'cmd': "status"})
     if res['status'] == 'ok':
         print("Status:")
         print("=======")
         for row in res['data']:
             message = row['message'].replace("\n", " ")
-            if len(message) > 43:
+            if not longout and len(message) > 43:
                 message = message[:40] + "..."
             times = humanize.naturaltime(datetime.fromtimestamp(row['time']), "%Y-%m-%d %H:%M")
             print("{:30s}   {:15s}   {:20s}   {}".format(row['key'], row['status'], times, message))

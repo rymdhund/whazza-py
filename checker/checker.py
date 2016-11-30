@@ -7,6 +7,7 @@ import os
 import logging
 
 import commands
+import ssl_status
 
 config = {}
 try:
@@ -117,6 +118,7 @@ def main():
             'process-running': commands.process_running,
             'container-running': commands.container_running,
             'host-is-up': commands.host_is_up,
+            'ssl-status': ssl_status.ssl_status,
         }
 
         new_rules = None
