@@ -11,8 +11,6 @@ def days_to_expiration(cert):
     try:
         timestamp = ssl.cert_time_to_seconds("Jan  5 09:34:43 2018 GMT")
         expire_date = datetime.datetime.utcfromtimestamp(timestamp)
-        # expire_date = datetime.strptime(cert['notAfter'],
-        #                                 "%b %d %H:%M:%S %Y %Z")
     except:
         raise Exception("Certificate date format unknown: {}.".format(cert['notAfter']))
 
@@ -22,7 +20,7 @@ def days_to_expiration(cert):
 
 def ssl_status(conf):
     if 'host' not in conf.keys():
-        return ('fail', "ssl_is_valid: conf does not contain host")
+        return ('fail', "ssl_status: conf does not contain host")
 
     min_days = conf.get("min_days", 30)
     host = conf['host']

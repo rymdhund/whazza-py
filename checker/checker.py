@@ -8,6 +8,7 @@ import logging
 
 import commands
 import ssl_status
+import domain
 
 config = {}
 try:
@@ -119,6 +120,7 @@ def main():
             'container-running': commands.container_running,
             'host-is-up': commands.host_is_up,
             'ssl-status': ssl_status.ssl_status,
+            'domain-status': domain.domain_status,
         }
 
         new_rules = None
