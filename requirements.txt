@@ -1,4 +1,3 @@
-#requests
 PyYAML
 GitPython
 pyzmq

@@ -100,6 +100,8 @@ def main():
     if len(sys.argv) < 2:
         usage(1)
 
+    logging.basicConfig(level=logging.DEBUG)
+
     init_cert()
 
     # setup certificates
@@ -113,6 +115,9 @@ def main():
     socket.curve_secretkey = client_secret
     socket.curve_publickey = client_public
     socket.curve_serverkey = server_public
+    if 'socks5_proxy' in config:
+        logging.debug("setting socks5 proxy {}".format(config['socks5_proxy']))
+        socket.set_string(zmq.SOCKS_PROXY, config['socks5_proxy'])
 
     # connect
     host = "tcp://{}:{}".format(config['server_host'], config['server_port'])
