@@ -14,7 +14,8 @@ from zmq.auth.thread import ThreadAuthenticator
 
 config = {}
 try:
-    with open("config.yml", 'r') as stream:
+    configfile = os.environ.get('STATUS_CONFIG_FILE', "config.yml")
+    with open(configfile, 'r') as stream:
         config = yaml.safe_load(stream)
 except FileNotFoundError:
     print("INFO: No config file found, running with defaults")
@@ -95,7 +96,7 @@ def checker_listener(db):
     logging.info("Starting checker listener")
     while True:
         byts = socket.recv()
-        logging.debug("Got {} bytes".format(len(byts)))
+        logging.debug("checkr_listener: Got {} bytes".format(len(byts)))
 
         try:
             key, status, msg, checker, max_update_id = parse_check_input(byts)
@@ -127,105 +128,114 @@ def checker_listener(db):
         socket.send(json.dumps({'rule-config': new_rules}).encode())
 
 
-def parse_client_input(byts):
-    schema = {
-        "type": "object",
-        "properties": {
-            "cmd": {"type": "string"},
-            "data": {"type": "object"},
-        },
-        "required": ["cmd"],
-        "additionalProperties": False,
-    }
-    try:
-        string = byts.decode()
-        print("Received client request: {}".format(string))
-        data = json.loads(string)
-        jsonschema.validate(data, schema)
-        return data['cmd'], data.get('data', {})
-    except UnicodeError as e:
-        print("WARNING: couldn't decode utf8: {}".format(str(e)))
-        raise ValidationError("Error validating data: couldn't parse utf8")
-    except json.JSONDecodeError as e:
-        print("WARNING: malformed json data from checker: {}".format(str(e)))
-        raise ValidationError("Error validating data: malformed json")
-    except jsonschema.ValidationError as e:
-        print("WARNING: json doesn't follow schema: {}".format(str(e)))
-        raise ValidationError("Error validating data: json doesn't follow schema")
+class ClientListener:
+    def __init__(self, db):
+        self.db = db
 
+    def run(self):
+        auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_clients')
+        self.socket = setup_socket(auth_keys_dir, "tcp://*:5556")
 
-def parse_set_rules_data(data):
-    schema = {
-        "type": "object",
-        "properties": {
-            "rules": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "type": {"type": "string"},
-                        "key": {"type": "string"},
-                        "check_interval": {
-                            "type": "integer",
-                            "minimum": 1,
+        logging.info("Starting client listener")
+        while True:
+            byts = self.socket.recv()
+            logging.debug("client_listener: Got {} bytes".format(len(byts)))
+
+            try:
+                cmd, data = self.parse_input(byts)
+            except Exception as e:
+                logging.warn("client_listener: Couldn't parse message")
+                self.socket.send('{"status": "error", "message": "bad input"}'.encode())
+                continue
+            try:
+                msg = self.process_command(cmd, data)
+                self.socket.send(json.dumps(msg).encode())
+            except Exception as e:
+                logging.warn("client_listener: Couldn't parse message")
+                self.socket.send('{"status": "error", "message": "bad input"}'.encode())
+
+    def process_command(self, cmd, data):
+        logging.debug("client_listener: handling message: {}".format(cmd))
+        if cmd == 'status':
+            logging.debug("client_listener: status")
+            return {'status': 'ok', 'data': self.db.status_data()}
+        elif cmd == 'dump-rules':
+            return {'status': 'ok', 'data': self.db.rule_config_data()}
+        elif cmd == 'set-rules':
+            try:
+                rules = self.parse_set_rules_data(data)
+                self.db.update_rules(rules)
+                return {'status': 'ok'}
+            except Exception as e:
+                logging.warn("client_listener: Error setting rules {}".format(e))
+                return {'status': 'error', 'message': str(e)}
+        return {"status": "error", "message": "Unknown command"}
+
+    def parse_input(self, byts):
+        schema = {
+            "type": "object",
+            "properties": {
+                "cmd": {"type": "string"},
+                "data": {"type": "object"},
+            },
+            "required": ["cmd"],
+            "additionalProperties": False,
+        }
+        try:
+            string = byts.decode()
+            print("Received client request: {}".format(string))
+            data = json.loads(string)
+            jsonschema.validate(data, schema)
+            return data['cmd'], data.get('data', {})
+        except UnicodeError as e:
+            print("WARNING: couldn't decode utf8: {}".format(str(e)))
+            raise ValidationError("Error validating data: couldn't parse utf8")
+        except json.JSONDecodeError as e:
+            print("WARNING: malformed json data from checker: {}".format(str(e)))
+            raise ValidationError("Error validating data: malformed json")
+        except jsonschema.ValidationError as e:
+            print("WARNING: json doesn't follow schema: {}".format(str(e)))
+            raise ValidationError("Error validating data: json doesn't follow schema")
+
+    def parse_set_rules_data(self, data):
+        schema = {
+            "type": "object",
+            "properties": {
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string"},
+                            "key": {"type": "string"},
+                            "check_interval": {
+                                "type": "integer",
+                                "minimum": 1,
+                            },
+                            "params": {"type": "object"},
+                            "checker": {"type": "string"},
                         },
-                        "params": {"type": "object"},
-                        "checker": {"type": "string"},
                     },
                 },
             },
-        },
-        "required": ["rules"],
-        "additionalProperties": False,
-    }
-    rules = []
-    try:
-        jsonschema.validate(data, schema)
-        for rule in data['rules']:
-            rules.append(Rule(
-                rule['type'],
-                rule['key'],
-                rule['check_interval'] * 3,
-                rule['check_interval'],
-                rule['params'],
-                rule['checker'], -1))
-    except jsonschema.ValidationError as e:
-        print("WARNING: in data from client, json doesn't follow schema: {}".format(str(e)))
-        raise ValidationError("Error validating data: json doesn't follow schema")
-    return rules
-
-
-def client_listener(db):
-    auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_clients')
-    socket = setup_socket(auth_keys_dir, "tcp://*:5556")
-
-    logging.info("Starting client listener")
-    while True:
-        byts = socket.recv()
-
+            "required": ["rules"],
+            "additionalProperties": False,
+        }
+        rules = []
         try:
-            cmd, data = parse_client_input(byts)
-        except Exception as e:
-            socket.send('{"status": "error", "message": "bad input"}'.encode())
-            continue
-
-        if cmd == 'status':
-            msg = {'status': 'ok', 'data': db.status_data()}
-            socket.send(json.dumps(msg).encode())
-        elif cmd == 'dump-rules':
-            msg = {'status': 'ok', 'data': db.rule_config_data()}
-            socket.send(json.dumps(msg).encode())
-        elif cmd == 'set-rules':
-            try:
-                rules = parse_set_rules_data(data)
-                db.update_rules(rules)
-                msg = {'status': 'ok'}
-            except Exception as e:
-                msg = {'status': 'error', 'message': str(e)}
-            socket.send(json.dumps(msg).encode())
-        else:
-            msg = {"status": "error", "message": "Unknown command"}
-            socket.send(json.dumps(msg).encode())
+            jsonschema.validate(data, schema)
+            for rule in data['rules']:
+                rules.append(Rule(
+                    rule['type'],
+                    rule['key'],
+                    rule['check_interval'] * 3,
+                    rule['check_interval'],
+                    rule['params'],
+                    rule['checker'], -1))
+        except jsonschema.ValidationError as e:
+            print("WARNING: in data from client, json doesn't follow schema: {}".format(str(e)))
+            raise ValidationError("Error validating data: json doesn't follow schema")
+        return rules
 
 
 class Rule:
@@ -266,7 +276,7 @@ class Database:
         self.int_to_status = {1: 'good', 2: 'fail'}
 
         if not os.path.isfile(filename):
-            print("Creating database")
+            logging.info("Creating database {}".format(filename))
             self._init_db()
 
     def _row_to_rule(self, row):
@@ -438,7 +448,8 @@ def main():
     checker_thread = threading.Thread(target=checker_listener, args=(db,))
     checker_thread.start()
 
-    client_thread = threading.Thread(target=client_listener, args=(db,))
+    client = ClientListener(db)
+    client_thread = threading.Thread(target=client.run)
     client_thread.start()
 
 
