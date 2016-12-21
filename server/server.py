@@ -14,7 +14,7 @@ from zmq.auth.thread import ThreadAuthenticator
 
 config = {}
 try:
-    configfile = os.environ.get('STATUS_CONFIG_FILE', "config.yml")
+    configfile = os.environ.get('WHAZZA_CONFIG_FILE', "config.yml")
     with open(configfile, 'r') as stream:
         config = yaml.safe_load(stream)
 except FileNotFoundError:

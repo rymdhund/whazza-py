@@ -10,15 +10,18 @@ import commands
 import ssl_status
 import domain
 
+
 config = {}
 try:
-    with open("config.yml", 'r') as stream:
+    configfile = os.environ.get('WHAZZA_CONFIG_FILE', "config.yml")
+    with open(configfile, 'r') as stream:
         config = yaml.safe_load(stream)
 except FileNotFoundError:
     print("INFO: No config file found, running with defaults")
 except yaml.scanner.ScannerError:
     print("ERROR: Couldn't parse config file")
     sys.exit(1)
+
 
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5555)
