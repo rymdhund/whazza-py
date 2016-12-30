@@ -95,7 +95,7 @@ def host_is_up(conf):
 
     try:
         import requests
-        r = requests.get(conf['host'])
+        r = requests.get(conf['host'], timeout=10)
         if r.status_code != 200:
             return ('fail', "Status code {}".format(r.status_code))
         return ('good', "")

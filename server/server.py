@@ -96,7 +96,7 @@ def checker_listener(db):
     logging.info("Starting checker listener")
     while True:
         byts = socket.recv()
-        logging.debug("checkr_listener: Got {} bytes".format(len(byts)))
+        logging.debug("checker_listener: Got {} bytes".format(len(byts)))
 
         try:
             key, status, msg, checker, max_update_id = parse_check_input(byts)
@@ -109,22 +109,24 @@ def checker_listener(db):
 
         rule = db.get_rule(check.rule_key)
         if rule is not None:
+            logging.debug("checker_listener: Updating check".format(check.rule_key))
             db.add_check(check)
         else:
             key_parts = check.rule_key.split('/')
             if len(key_parts) == 3 and key_parts[0] == 'checkers' and key_parts[-1] == 'check-in':
                 if key_parts[1] == checker:
-                    print("First check-in from {}, creating rule".format(checker))
+                    logging.debug("checker_listener: First check-in from {}, creating rule".format(checker))
                     rule = Rule('check-in', check.rule_key, 15 * 60, 5 * 60, {}, checker, -1)
                     db.add_rule(rule)
                     db.add_check(check)
                 else:
-                    print("Warning: checker '{}' tried to check-in with {}", (checker, key_parts[1]))
+                    logging.warn("checker '{}' tried to check-in with {}", (checker, key_parts[1]))
             else:
-                print("Warning: unknown check for '{}'".format(check.rule_key))
+                logging.warn("unknown check for '{}'".format(check.rule_key))
 
         #  Send reply back to client
         new_rules = [rule.dict() for rule in db.get_new_rules(checker, max_update_id)]
+        logging.debug("checker_listener: Resuponding")
         socket.send(json.dumps({'rule-config': new_rules}).encode())
 
 

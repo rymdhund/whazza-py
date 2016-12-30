@@ -127,20 +127,20 @@ def main():
         }
 
         new_rules = None
-        print("Checking for something to do")
+        logging.debug("Checking for something to do")
         for rule in rules.rules:
             if now() - last_run.get(rule['key'], 0) >= rule['check_interval']:
-                print("running {}".format(rule['type']))
+                logging.debug("running {}".format(rule['type']))
                 if rule['type'] in cmds:
                     cmd = cmds[rule['type']]
                     try:
                         status, message = cmd(rule['params'])
                     except Exception as e:
-                        print("WARNING: caught exception during check, {}".format(e))
+                        logging.warn("Caught exception during check, {}".format(e))
                         status, message = 'fail', "Exception during check: {}".format(str(e))
                     result_msg = {'key': rule['key'], 'status': status, 'msg': message, 'checker_id': config['checker_id']}
                 else:
-                    print("WARNING: Couldn't find command for type '{}'".format(rule['type']))
+                    logging.warn("Couldn't find command for type '{}'".format(rule['type']))
                     # maybe add a special status (panic?) for these "meta" fails?
                     result_msg = {'key': rule['key'], 'status': 'fail', 'msg': "Couldn't find command for type '{}'".format(rule['type']), 'checker_id': config['checker_id']}
                 msg = result_msg
@@ -148,7 +148,7 @@ def main():
                 response = send_msg(socket, msg)
                 rule_config = response.get('rule-config', [])
                 if rule_config != []:
-                    print("Info: updating config")
+                    logging.debug("Info: updating config")
                     new_rules = rule_config
 
                 last_run[rule['key']] = now()
@@ -157,10 +157,10 @@ def main():
             for rule in new_rules:
                 if rule['type'] == 'none':
                     rules.rm(rule['key'])
-                    print("INFO: Removed rule {}".format(rule['key']))
+                    logging.info("Removed rule {}".format(rule['key']))
                 else:
                     rules.add(rule)
-                    print("INFO: Updated rule {}".format(rule['key']))
+                    logging.info("Updated rule {}".format(rule['key']))
                     if rule['update_id'] > max_update_id:
                         max_update_id = rule['update_id']
         else:
