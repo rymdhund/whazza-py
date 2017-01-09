@@ -125,16 +125,22 @@ def main():
     socket.connect(host)
 
     cmd = sys.argv[1]
-    if cmd == "status":
-        status(socket)
-    elif cmd == "dump-rules":
-        dump_rules(socket)
-    elif cmd == "set-rules":
-        if len(sys.argv) != 3:
+    try:
+        if cmd == "status":
+            status(socket)
+        elif cmd == "dump-rules":
+            dump_rules(socket)
+        elif cmd == "set-rules":
+            if len(sys.argv) != 3:
+                usage(1)
+            set_rules(socket, sys.argv[2])
+        else:
             usage(1)
-        set_rules(socket, sys.argv[2])
-    else:
-        usage(1)
+    except KeyboardInterrupt:
+        print("Interrupted, shutting down...")
+    finally:
+        socket.close()
+        context.term()
 
 if __name__ == '__main__':
     main()
