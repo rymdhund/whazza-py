@@ -25,7 +25,13 @@ config.setdefault('keys_dir', 'keys')
 
 def send_msg(socket, msg):
     socket.send(json.dumps(msg).encode())
-    res = json.loads(socket.recv().decode())
+    poller = zmq.Poller()
+    poller.register(socket, zmq.POLLIN)
+    if poller.poll(10 * 1000):  # 10s timeout in milliseconds
+        resp = socket.recv()
+    else:
+        raise IOError("Timeout processing auth request")
+    res = json.loads(resp.decode())
     return res
 
 
@@ -112,6 +118,7 @@ def main():
     # setup socket
     context = zmq.Context(1)
     socket = context.socket(zmq.REQ)
+    socket.setsockopt(zmq.LINGER, 0)
     socket.curve_secretkey = client_secret
     socket.curve_publickey = client_public
     socket.curve_serverkey = server_public
