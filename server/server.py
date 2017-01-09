@@ -35,7 +35,7 @@ def now():
     return datetime.datetime.now()
 
 
-def parse_check_input(byts):
+def parse_check_input(data):
     schema = {
         "type": "object",
         "properties": {
@@ -49,23 +49,14 @@ def parse_check_input(byts):
         "additionalProperties": False,
     }
     try:
-        string = byts.decode()
-        print("Received checker request: {}".format(string))
-        data = json.loads(string)
         jsonschema.validate(data, schema)
         return (data['key'],
                 data['status'],
                 data['msg'],
                 data['checker_id'],
                 data['max_update_id'])
-    except UnicodeError as e:
-        print("WARNING: couldn't decode utf8: {}".format(str(e)))
-        raise ValidationError("Error validating data: couldn't parse utf8")
-    except json.JSONDecodeError as e:
-        print("WARNING: malformed json data from checker: {}".format(str(e)))
-        raise ValidationError("Error validating data: malformed json")
     except jsonschema.ValidationError as e:
-        print("WARNING: json doesn't follow schema: {}".format(str(e)))
+        logging.warn("Json doesn't follow schema: {}".format(str(e)))
         raise ValidationError("Error validating data: json doesn't follow schema")
 
 
@@ -95,14 +86,13 @@ def checker_listener(db):
 
     logging.info("Starting checker listener")
     while True:
-        byts = socket.recv()
-        logging.debug("checker_listener: Got {} bytes".format(len(byts)))
-
         try:
-            key, status, msg, checker, max_update_id = parse_check_input(byts)
+            data = socket.recv_json()
+            logging.debug("checker_listener: Got data: {}".format(data))
+            key, status, msg, checker, max_update_id = parse_check_input(data)
         except Exception as e:
             logging.warn("Couldn't parse message")
-            socket.send('{"status": "fail"}'.encode())
+            socket.send_json({"status": "fail"})
             continue
 
         check = Check(key, status, msg, now())
@@ -126,8 +116,8 @@ def checker_listener(db):
 
         #  Send reply back to client
         new_rules = [rule.dict() for rule in db.get_new_rules(checker, max_update_id)]
-        logging.debug("checker_listener: Resuponding")
-        socket.send(json.dumps({'rule-config': new_rules}).encode())
+        logging.debug("checker_listener: Responding")
+        socket.send_json({'rule-config': new_rules})
 
 
 class ClientListener:
@@ -140,21 +130,20 @@ class ClientListener:
 
         logging.info("Starting client listener")
         while True:
-            byts = self.socket.recv()
-            logging.debug("client_listener: Got {} bytes".format(len(byts)))
-
             try:
-                cmd, data = self.parse_input(byts)
+                data = self.socket.recv_json()
+                logging.debug("client_listener: Got data {}".format(data))
+                cmd, data = self.parse_input(data)
             except Exception as e:
                 logging.warn("client_listener: Couldn't parse message")
-                self.socket.send('{"status": "error", "message": "bad input"}'.encode())
+                self.socket.send_json({"status": "error", "message": "bad input"})
                 continue
             try:
                 msg = self.process_command(cmd, data)
-                self.socket.send(json.dumps(msg).encode())
+                self.socket.send_json(msg)
             except Exception as e:
                 logging.warn("client_listener: Couldn't parse message")
-                self.socket.send('{"status": "error", "message": "bad input"}'.encode())
+                self.socket.send_json({"status": "error", "message": "bad input"})
 
     def process_command(self, cmd, data):
         logging.debug("client_listener: handling message: {}".format(cmd))
@@ -173,7 +162,7 @@ class ClientListener:
                 return {'status': 'error', 'message': str(e)}
         return {"status": "error", "message": "Unknown command"}
 
-    def parse_input(self, byts):
+    def parse_input(self, data):
         schema = {
             "type": "object",
             "properties": {
@@ -184,19 +173,10 @@ class ClientListener:
             "additionalProperties": False,
         }
         try:
-            string = byts.decode()
-            print("Received client request: {}".format(string))
-            data = json.loads(string)
             jsonschema.validate(data, schema)
             return data['cmd'], data.get('data', {})
-        except UnicodeError as e:
-            print("WARNING: couldn't decode utf8: {}".format(str(e)))
-            raise ValidationError("Error validating data: couldn't parse utf8")
-        except json.JSONDecodeError as e:
-            print("WARNING: malformed json data from checker: {}".format(str(e)))
-            raise ValidationError("Error validating data: malformed json")
         except jsonschema.ValidationError as e:
-            print("WARNING: json doesn't follow schema: {}".format(str(e)))
+            logging.warn("Json doesn't follow schema: {}".format(str(e)))
             raise ValidationError("Error validating data: json doesn't follow schema")
 
     def parse_set_rules_data(self, data):
@@ -235,7 +215,7 @@ class ClientListener:
                     rule['params'],
                     rule['checker'], -1))
         except jsonschema.ValidationError as e:
-            print("WARNING: in data from client, json doesn't follow schema: {}".format(str(e)))
+            logging.warn("In data from client, json doesn't follow schema: {}".format(str(e)))
             raise ValidationError("Error validating data: json doesn't follow schema")
         return rules
 
@@ -373,12 +353,13 @@ class Database:
             """)
             ret = []
             for row in cur.fetchall():
-                key, status, time = row[0], self.int_to_status[row[1]], row[3]
+                key, status, time, message = row[0], self.int_to_status[row[1]], row[3], row[2]
                 rule = self.get_rule(key)
                 if now() - time > datetime.timedelta(0, rule.valid_period):
                     status = 'expired'
+                    message = ""
 
-                ret.append({'key': key, 'status': status, 'message': row[2], 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
+                ret.append({'key': key, 'status': status, 'message': message, 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
 
             # append rules that don't have any check data yet
             cur = db.execute("""

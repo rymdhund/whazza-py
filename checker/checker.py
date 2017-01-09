@@ -1,7 +1,6 @@
 import yaml
 import sys
 import zmq
-import json
 import time
 import os
 import logging
@@ -29,9 +28,13 @@ config.setdefault('keys_dir', 'keys')
 
 
 def send_msg(socket, msg):
-    socket.send(json.dumps(msg).encode())
-    res = json.loads(socket.recv().decode())
-    return res
+    socket.send_json(msg)
+    poller = zmq.Poller()
+    poller.register(socket, zmq.POLLIN)
+    if poller.poll(10 * 1000):  # 10s timeout in milliseconds
+        return socket.recv_json()
+    else:
+        raise IOError("Timeout sending message")
 
 
 def now():
