@@ -59,6 +59,6 @@ def ssl_status(conf):
     except ssl.SSLError as e:
         return ('fail', "SSL error: {}".format(e))
     except Exception as e:
-        print("e: {}".format(e))
+        return ('fail', "Unknown error: {}".format(e))
 
     return ('good', "")

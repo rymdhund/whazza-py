@@ -14,7 +14,8 @@ def domain_status(conf):
     exp_date = w.expiration_date
     if isinstance(exp_date, list):
         exp_date = exp_date[0]
-    print(exp_date)
+    if exp_date is None:
+        return ('fail', "Unknown expration date for domain, is it registered?")
     expire_in = (exp_date - datetime.now()).days
 
     if expire_in < min_days:
