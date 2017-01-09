@@ -1,5 +1,6 @@
 import subprocess
 import datetime
+import logging
 
 
 # The commands are to be named after what they are asserting
@@ -9,7 +10,7 @@ def port_scan(conf):
     import socket
 
     target_ip = socket.gethostbyname(conf['target'] or 'localhost')
-    print("Starting scan on host {}".format(target_ip))
+    logging.info("Starting port scan on host {}".format(target_ip))
 
     ports = []
 
@@ -20,7 +21,7 @@ def port_scan(conf):
 
         if(result == 0):
             ports.append(i)
-            print("Port {}: OPEN".format(i))
+            logging.debug("Port {}: OPEN".format(i))
         s.close()
 
     return {'open_ports': ports}
