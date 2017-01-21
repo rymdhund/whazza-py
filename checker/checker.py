@@ -109,7 +109,7 @@ def main():
     # check-in every 5 min by default
     check_in_key = 'checkers/{}/check-in'.format(config['checker_id'])
     rules = Rules()
-    rules.add({'type': 'check-in', 'key': check_in_key, 'valid_period': 15 * 60, 'check_interval': 5 * 60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0})
+    rules.add({'type': 'check-in', 'key': check_in_key, 'check_interval': 5 * 60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0})
 
     # keep track of when the checks were run
     last_run = {}

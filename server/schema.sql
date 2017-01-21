@@ -12,7 +12,6 @@ create table rules (
   id integer primary key autoincrement,
   type text not null,
   key text not null unique,
-  valid_period int not null,
   check_interval int not null,
   params text not null,
   checker text not null,

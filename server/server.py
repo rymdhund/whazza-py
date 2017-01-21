@@ -27,6 +27,7 @@ except yaml.scanner.ScannerError:
 
 config.setdefault('database', 'db.sqlite3')
 config.setdefault('keys_dir', 'keys')
+config.setdefault('check_timeout', 300)  # 5 minute timeout by default
 
 
 class ValidationError(Exception):
@@ -237,7 +238,6 @@ class ClientListener:
                 rules.append(Rule(
                     rule['type'],
                     rule['key'],
-                    rule['check_interval'] * 3,
                     rule['check_interval'],
                     rule['params'],
                     rule['checker'], -1))
@@ -248,17 +248,16 @@ class ClientListener:
 
 
 class Rule:
-    def __init__(self, type, key, valid_period, check_interval, params, checker, update_id):
+    def __init__(self, type, key, check_interval, params, checker, update_id):
         self.type = type
         self.key = key
-        self.valid_period = valid_period
         self.check_interval = check_interval
         self.params = params
         self.checker = checker
         self.update_id = update_id
 
     def dict(self):
-        return {'type': self.type, 'key': self.key, 'valid_period': self.valid_period, 'check_interval': self.check_interval,
+        return {'type': self.type, 'key': self.key, 'check_interval': self.check_interval,
                 'params': self.params, 'checker': self.checker, 'update_id': self.update_id}
 
     def client_dict(self):
@@ -289,11 +288,11 @@ class Database:
             self._init_db()
 
     def _row_to_rule(self, row):
-        params = json.loads(row[4])
-        return Rule(row[0], row[1], row[2], row[3], params, row[5], row[6])
+        params = json.loads(row[3])
+        return Rule(row[0], row[1], row[2], params, row[4], row[5])
 
     def _get_rule(self, key, db):
-        cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where key = ?", (key,))
+        cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where key = ?", (key,))
         res = cur.fetchone()
         if res is not None:
             return self._row_to_rule(res)
@@ -305,14 +304,14 @@ class Database:
 
     def get_rules(self):
         with closing(self._connect_db()) as db:
-            cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules")
+            cur = db.execute("select type, key, check_interval, params, checker, update_id from rules")
             return [self._row_to_rule(row) for row in cur.fetchall()]
 
     def _add_rule(self, rule, db):
         db.execute("""
-        insert into rules (type, key, valid_period, check_interval, params, checker, update_id)
-        values (?, ?, ?, ?, ?, ?, (select ifnull(max(update_id), 0)+1 from rules))
-        """, (rule.type, rule.key, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker))
+        insert into rules (type, key, check_interval, params, checker, update_id)
+        values (?, ?, ?, ?, ?, (select ifnull(max(update_id), 0)+1 from rules))
+        """, (rule.type, rule.key, rule.check_interval, json.dumps(rule.params), rule.checker))
 
     def add_rule(self, rule):
         with closing(self._connect_db()) as db:
@@ -321,14 +320,14 @@ class Database:
 
     def get_new_rules(self, checker, update_id):
         with closing(self._connect_db()) as db:
-            cur = db.execute("select type, key, valid_period, check_interval, params, checker, update_id from rules where checker=? and update_id > ?", (checker, update_id))
+            cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where checker=? and update_id > ?", (checker, update_id))
             return [self._row_to_rule(row) for row in cur.fetchall()]
 
     def _update_rule(self, rule, db):
         db.execute("""
-        update rules set type=?, valid_period=?, check_interval=?, params=?, checker=?, update_id=(select ifnull(max(update_id), 0)+1 from rules)
+        update rules set type=?, check_interval=?, params=?, checker=?, update_id=(select ifnull(max(update_id), 0)+1 from rules)
         where key=?
-        """, (rule.type, rule.valid_period, rule.check_interval, json.dumps(rule.params), rule.checker, rule.key))
+        """, (rule.type, rule.check_interval, json.dumps(rule.params), rule.checker, rule.key))
 
     def update_rules(self, rules):
         with closing(self._connect_db()) as db:
@@ -402,7 +401,7 @@ class Database:
             for row in cur.fetchall():
                 key, status, time, message = row[0], self.int_to_status[row[1]], row[3], row[2]
                 rule = self.get_rule(key)
-                if now() - time > datetime.timedelta(0, rule.valid_period):
+                if now() - time > datetime.timedelta(0, rule.check_interval + config['check_timeout']):
                     status = 'expired'
                     message = ""
 
