@@ -8,6 +8,8 @@ import jsonschema
 import yaml
 import sys
 import logging
+import requests
+import time
 
 from contextlib import closing
 from zmq.auth.thread import ThreadAuthenticator
@@ -80,6 +82,22 @@ def setup_socket(auth_keys_dir, bind):
     return socket
 
 
+def notify(msg):
+    if 'notification_url' in config:
+        logging.info("Notify: {}".format(msg))
+
+        if 'notification_base_msg' in config:
+            payload = config['notification_base_msg']
+        else:
+            payload = {}
+        payload['message'] = msg
+
+        try:
+            requests.post(config['notification_url'], data=payload)
+        except Exception as e:
+            logging.warn("Exception sending notification: {}".format(e))
+
+
 def checker_listener(db):
     auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_checkers')
     socket = setup_socket(auth_keys_dir, "tcp://*:5555")
@@ -100,10 +118,19 @@ def checker_listener(db):
         rule = db.get_rule(check.rule_key)
         if rule is not None:
             logging.debug("checker_listener: Updating check".format(check.rule_key))
+
+            # Notify if the status changed
+            if check.status != db.get_notified_status(check.rule_key):
+                db.set_notification(check.rule_key, check.status)
+                msg = "Check {}. status '{}'".format(check.rule_key, check.status)
+                notify(msg)
+
             db.add_check(check)
         else:
+            # Unknown check
             key_parts = check.rule_key.split('/')
             if len(key_parts) == 3 and key_parts[0] == 'checkers' and key_parts[-1] == 'check-in':
+                # A checker can do a check-in without being prompted
                 if key_parts[1] == checker:
                     logging.debug("checker_listener: First check-in from {}, creating rule".format(checker))
                     rule = Rule('check-in', check.rule_key, 15 * 60, 5 * 60, {}, checker, -1)
@@ -254,8 +281,8 @@ class Database:
     def __init__(self, filename):
         self.filename = filename
 
-        self.status_to_int = {'good': 1, 'fail': 2}
-        self.int_to_status = {1: 'good', 2: 'fail'}
+        self.status_to_int = {'good': 1, 'fail': 2, 'expired': 3}
+        self.int_to_status = {1: 'good', 2: 'fail', 3: 'expired'}
 
         if not os.path.isfile(filename):
             logging.info("Creating database {}".format(filename))
@@ -325,6 +352,26 @@ class Database:
             insert into checks (rule_key, time, status, msg) values (?, ?, ?, ?)
             """, (check.rule_key, check.time, self.status_to_int[check.status], check.msg))
             db.commit()
+
+    def set_notification(self, key, status):
+        with closing(self._connect_db()) as db:
+            db.execute("delete from notifications where rule_key = ?", (key,))
+
+            # dont save anything on "good" status
+            if status != 'good':
+                db.execute("insert into notifications (rule_key, status) values (?, ?)", (key, self.status_to_int[status]))
+            db.commit()
+
+    def get_notified_status(self, key):
+        """ Returns 'good' if we haven't sent any notifications
+        """
+        with closing(self._connect_db()) as db:
+            cur = db.execute("select status from notifications where rule_key = ?", (key,))
+            row = cur.fetchone()
+            if row:
+                return self.int_to_status[row[0]]
+            else:
+                return 'good'
 
     def status_data(self):
         with closing(self._connect_db()) as db:
@@ -417,6 +464,19 @@ def init_cert():
         zmq.auth.create_certificates(keys_dir, "server")
 
 
+def expired_checker(db):
+    # check every minute for expired stuff
+    # start by waiting 1m to give checkers time to check in when we're first starting
+    while True:
+        time.sleep(60)
+        statuses = db.status_data()
+        for s in statuses:
+            if s['status'] == 'expired' and db.get_notified_status(s['key']) != 'expired':
+                db.set_notification(s['key'], s['status'])
+                msg = "Check {}. status '{}'".format(s['key'], s['status'])
+                notify(msg)
+
+
 ########
 # Main #
 ########
@@ -434,6 +494,9 @@ def main():
     client = ClientListener(db)
     client_thread = threading.Thread(target=client.run)
     client_thread.start()
+
+    expired_thread = threading.Thread(target=expired_checker, args=(db,))
+    expired_thread.start()
 
 
 if __name__ == '__main__':

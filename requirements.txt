@@ -5,3 +5,4 @@ humanize
 docker-py
 jsonschema
 python-whois
+requests

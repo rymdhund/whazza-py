@@ -18,3 +18,10 @@ create table rules (
   checker text not null,
   update_id integer not null
 );
+
+drop table if exists notifications;
+create table notifications (
+  id integer primary key autoincrement,
+  rule_key text not null unique,
+  status integer not null
+);

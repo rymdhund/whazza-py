@@ -1,3 +1,4 @@
 PyYAML
 pyzmq
 jsonschema
+requests
