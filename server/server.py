@@ -170,14 +170,15 @@ class ClientListener:
                 msg = self.process_command(cmd, data)
                 self.socket.send_json(msg)
             except Exception as e:
-                logging.warn("client_listener: Couldn't parse message")
+                logging.warn("client_listener: Couldn't process message: {}".format(e))
                 self.socket.send_json({"status": "error", "message": "bad input"})
 
     def process_command(self, cmd, data):
         logging.debug("client_listener: handling message: {}".format(cmd))
         if cmd == 'status':
             logging.debug("client_listener: status")
-            return {'status': 'ok', 'data': self.db.status_data()}
+            data = [s.client_data() for s in self.db.get_statuses()]
+            return {'status': 'ok', 'data': data}
         elif cmd == 'dump-rules':
             return {'status': 'ok', 'data': self.db.rule_config_data()}
         elif cmd == 'set-rules':
@@ -257,11 +258,11 @@ class Rule:
         self.update_id = update_id
 
     def dict(self):
-        return {'type': self.type, 'key': self.key, 'check_interval': self.check_interval,
-                'params': self.params, 'checker': self.checker, 'update_id': self.update_id}
+        return self.__dict__
 
     def client_dict(self):
-        return {'type': self.type, 'key': self.key, 'check_interval': self.check_interval, 'params': self.params, 'checker': self.checker}
+        return {'type': self.type, 'key': self.key, 'check_interval': self.check_interval,
+                'params': self.params, 'checker': self.checker}
 
 
 class Check:
@@ -270,6 +271,41 @@ class Check:
         self.status = status
         self.msg = msg
         self.time = time
+
+    def dict(self):
+        return self.__dict__
+
+
+class Status:
+    def __init__(self, rule, check, last_successful):
+        self.rule_key = rule.key
+        self.last_successful = last_successful
+
+        if check is not None:
+            self.last_check = check.time
+            if now() - check.time > datetime.timedelta(0, rule.check_interval + config['check_timeout']):
+                self.status = 'expired'
+                self.message = ""
+            else:
+                self.status = check.status
+                self.message = check.msg
+        else:
+            self.status = 'nodata'
+            self.message = "No data on this rule yet"
+
+    def dict(self):
+        return self.__dict__
+
+    def client_data(self):
+        time = self.last_check.timestamp() if self.last_check is not None else None
+        succ = self.last_successful.timestamp() if self.last_successful is not None else None
+        return {
+            'key': self.rule_key,
+            'status': self.status,
+            'message': self.message,
+            'time': time,
+            'last_successful': succ,
+        }
 
 
 ############
@@ -306,6 +342,16 @@ class Database:
         with closing(self._connect_db()) as db:
             cur = db.execute("select type, key, check_interval, params, checker, update_id from rules")
             return [self._row_to_rule(row) for row in cur.fetchall()]
+
+    def get_check(self, key):
+        with closing(self._connect_db()) as db:
+            cur = db.execute("select status, msg, time from checks where rule_key = ? limit 1", (key,))
+
+            row = cur.fetch_one()
+            if row:
+                return Check(key, row[0], row[1], row[2])
+            else:
+                return None
 
     def _add_rule(self, rule, db):
         db.execute("""
@@ -372,7 +418,7 @@ class Database:
             else:
                 return 'good'
 
-    def status_data(self):
+    def get_statuses(self):
         with closing(self._connect_db()) as db:
             # Find last successful check for each rule
             cur = db.execute("""
@@ -384,7 +430,7 @@ class Database:
             """)
             last_successful = {}
             for row in cur.fetchall():
-                last_successful[row[0]] = row[1].timestamp()
+                last_successful[row[0]] = row[1]
             cur.close()
 
             # Find last check for each rule
@@ -399,24 +445,20 @@ class Database:
             """)
             ret = []
             for row in cur.fetchall():
-                key, status, time, message = row[0], self.int_to_status[row[1]], row[3], row[2]
-                rule = self.get_rule(key)
-                if now() - time > datetime.timedelta(0, rule.check_interval + config['check_timeout']):
-                    status = 'expired'
-                    message = ""
-
-                ret.append({'key': key, 'status': status, 'message': message, 'time': time.timestamp(), 'last_successful': last_successful.get(key, None)})
+                check = Check(row[0], self.int_to_status[row[1]], row[2], row[3])
+                rule = self.get_rule(row[0])
+                ret.append(Status(rule, check, last_successful.get(row[0], None)))
 
             # append rules that don't have any check data yet
             cur = db.execute("""
-                select r.key from rules r
+                select r.type, r.key, r.check_interval, r.params, r.checker, r.update_id key from rules r
                 left join checks c
                 on (r.key = c.rule_key)
                 where c.id is null and r.type != 'none'
             """)
             for row in cur.fetchall():
-                key = row[0]
-                ret.append({'key': key, 'status': 'nodata', 'message': "No data on this rule yet", 'time': now().timestamp(), 'last_successful': None})
+                rule = self._row_to_rule(row)
+                ret.append(Status(rule, None, None))
             return ret
 
     def rule_config_data(self):
@@ -468,10 +510,10 @@ def expired_checker(db):
     # start by waiting 1m to give checkers time to check in when we're first starting
     while True:
         time.sleep(60)
-        statuses = db.status_data()
+        statuses = db.get_statuses()
         for s in statuses:
-            if s['status'] == 'expired' and db.get_notified_status(s['key']) != 'expired':
-                db.set_notification(s['key'], s['status'])
+            if s.status == 'expired' and db.get_notified_status(s.rule_key) != 'expired':
+                db.set_notification(s.rule_key, s.status)
                 msg = "Check {}. status '{}'".format(s['key'], s['status'])
                 notify(msg)
 

@@ -32,7 +32,9 @@ def send_msg(socket, msg):
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
     if poller.poll(10 * 1000):  # 10s timeout in milliseconds
-        return socket.recv_json()
+        response = socket.recv_json()
+        logging.debug("Got response: {}".format(response))
+        return response
     else:
         raise IOError("Timeout sending message")
 
