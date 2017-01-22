@@ -114,38 +114,41 @@ def checker_listener(db):
             socket.send_json({"status": "fail"})
             continue
 
-        check = Check(key, status, msg, now())
+        try:
+            check = Check(key, status, msg, now())
 
-        rule = db.get_rule(check.rule_key)
-        if rule is not None:
-            logging.debug("checker_listener: Updating check".format(check.rule_key))
+            rule = db.get_rule(check.rule_key)
+            if rule is not None:
+                logging.debug("checker_listener: Updating check".format(check.rule_key))
 
-            # Notify if the status changed
-            if check.status != db.get_notified_status(check.rule_key):
-                db.set_notification(check.rule_key, check.status)
-                msg = "Check {}. status '{}'".format(check.rule_key, check.status)
-                notify(msg)
+                # Notify if the status changed
+                if check.status != db.get_notified_status(check.rule_key):
+                    db.set_notification(check.rule_key, check.status)
+                    msg = "Check {}. status '{}'".format(check.rule_key, check.status)
+                    notify(msg)
 
-            db.add_check(check)
-        else:
-            # Unknown check
-            key_parts = check.rule_key.split('/')
-            if len(key_parts) == 3 and key_parts[0] == 'checkers' and key_parts[-1] == 'check-in':
-                # A checker can do a check-in without being prompted
-                if key_parts[1] == checker:
-                    logging.debug("checker_listener: First check-in from {}, creating rule".format(checker))
-                    rule = Rule('check-in', check.rule_key, 15 * 60, 5 * 60, {}, checker, -1)
-                    db.add_rule(rule)
-                    db.add_check(check)
-                else:
-                    logging.warn("checker '{}' tried to check-in with {}", (checker, key_parts[1]))
+                db.add_check(check)
             else:
-                logging.warn("unknown check for '{}'".format(check.rule_key))
+                # Unknown check
+                key_parts = check.rule_key.split('/')
+                if len(key_parts) == 3 and key_parts[0] == 'checkers' and key_parts[-1] == 'check-in':
+                    # A checker can do a check-in without being prompted
+                    if key_parts[1] == checker:
+                        logging.debug("checker_listener: First check-in from {}, creating rule".format(checker))
+                        rule = Rule('check-in', check.rule_key, 15 * 60, 5 * 60, {}, checker, -1)
+                        db.add_rule(rule)
+                        db.add_check(check)
+                    else:
+                        logging.warn("checker '{}' tried to check-in with {}", (checker, key_parts[1]))
+                else:
+                    logging.warn("unknown check for '{}'".format(check.rule_key))
 
-        #  Send reply back to client
-        new_rules = [rule.dict() for rule in db.get_new_rules(checker, max_update_id)]
-        logging.debug("checker_listener: Responding")
-        socket.send_json({'rule-config': new_rules})
+            #  Send reply back to client
+            new_rules = [rule.dict() for rule in db.get_new_rules(checker, max_update_id)]
+            logging.debug("checker_listener: Responding")
+            socket.send_json({'rule-config': new_rules})
+        except Exception as e:
+            logging.warn("Exception in checker_listener: {}".format(e))
 
 
 class ClientListener:
