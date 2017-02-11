@@ -1,6 +1,5 @@
 import zmq
 import json
-import datetime
 import threading
 import sqlite3
 import os
@@ -25,18 +24,6 @@ config.setdefault('check_timeout', 300)  # 5 minute timeout by default
 
 class ValidationError(Exception):
     pass
-
-
-def now():
-    return datetime.datetime.now()
-
-
-def parse_check_input(data):
-    return (
-        Check.from_dict(data['check']),
-        str(data['checker_id']),
-        int(data['max_update_id'])
-    )
 
 
 def setup_socket(auth_keys_dir, bind):
@@ -84,7 +71,11 @@ def checker_listener(db):
         try:
             data = socket.recv_json()
             logging.debug("checker_listener: Got data: {}".format(data))
-            check, checker, max_update_id = parse_check_input(data)
+            check, checker, max_update_id = (
+                Check.from_dict(data['check']),
+                str(data['checker_id']),
+                int(data['max_update_id'])
+            )
         except Exception as e:
             logging.warning("Couldn't parse message", e)
             socket.send_json({"status": "fail"})
