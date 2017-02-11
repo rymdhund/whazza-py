@@ -1,4 +1,4 @@
-.PHONY: build run
+.PHONY: build run integration-test
 
 build:
 	docker build -t whazza .
@@ -11,3 +11,6 @@ run-server:
 
 run-client:
 	docker run --rm -it -v $(PWD)/client:/app --link whazzaserver whazza python3 client.py
+
+integration-test:
+	docker run --rm -it whazza bash -c "cd integration_test; ./test.sh"

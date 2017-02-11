@@ -1,16 +1,15 @@
-FROM debian:jessie
+FROM python:3
 
 RUN apt-get update && \
     apt-get install -y \
-        python3 \
-        python3-pip \
         libzmq-dev \
         git
 
-RUN mkdir /app
-COPY . /app/
-WORKDIR /app
+COPY requirements.txt /
+RUN pip install -r /requirements.txt
 
-RUN pip3 install -r requirements.txt
+COPY . /app
+
+WORKDIR /app
 
 CMD echo "what do you want me to do?"
