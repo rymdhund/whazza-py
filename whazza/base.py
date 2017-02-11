@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class Rule:
@@ -37,7 +37,7 @@ class Status:
         if check is not None:
             self.last_check = check.time
             now = datetime.now()
-            if now - check.time > datetime.timedelta(0, rule.check_interval + check_timeout):
+            if now - check.time > timedelta(0, rule.check_interval + check_timeout):
                 self.status = 'expired'
                 self.message = ""
             else:

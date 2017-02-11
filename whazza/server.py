@@ -159,14 +159,14 @@ class ClientListener:
                 logging.debug("client_listener: Got data {}".format(data))
                 cmd, data = self.parse_input(data)
             except Exception as e:
-                logging.warn("client_listener: Couldn't parse message")
+                logging.warning("client_listener: Couldn't parse message", e)
                 self.socket.send_json({"status": "error", "message": "bad input"})
                 continue
             try:
                 msg = self.process_command(cmd, data)
                 self.socket.send_json(msg)
             except Exception as e:
-                logging.warn("client_listener: Couldn't process message: {}".format(e))
+                logging.warning("client_listener: Couldn't process message", e)
                 self.socket.send_json({"status": "error", "message": "bad input"})
 
     def process_command(self, cmd, data):
@@ -383,7 +383,7 @@ class Database:
             for row in cur.fetchall():
                 check = Check(row[0], self.int_to_status[row[1]], row[2], row[3])
                 rule = self.get_rule(row[0])
-                ret.append(Status(rule, check, last_successful.get(row[0], None)))
+                ret.append(Status(rule, check, last_successful.get(row[0], None), config['check_timeout']))
 
             # append rules that don't have any check data yet
             cur = db.execute("""
@@ -394,7 +394,7 @@ class Database:
             """)
             for row in cur.fetchall():
                 rule = self._row_to_rule(row)
-                ret.append(Status(rule, None, None))
+                ret.append(Status(rule, None, None, config['check_timeout']))
             return ret
 
     def rule_config_data(self):
