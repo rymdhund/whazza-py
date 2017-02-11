@@ -32,28 +32,11 @@ def now():
 
 
 def parse_check_input(data):
-    schema = {
-        "type": "object",
-        "properties": {
-            "checker_id": {"type": "string"},
-            "key": {"type": "string"},
-            "status": {"enum": ["good", "fail"]},
-            "msg": {"type": "string"},
-            "max_update_id": {"type": "number"},
-        },
-        "required": ["checker_id", "key", "status", "msg", "max_update_id"],
-        "additionalProperties": False,
-    }
-    try:
-        jsonschema.validate(data, schema)
-        return (data['key'],
-                data['status'],
-                data['msg'],
-                data['checker_id'],
-                data['max_update_id'])
-    except jsonschema.ValidationError as e:
-        logging.warn("Json doesn't follow schema: {}".format(str(e)))
-        raise ValidationError("Error validating data: json doesn't follow schema")
+    return (
+        Check.from_dict(data['check']),
+        str(data['checker_id']),
+        int(data['max_update_id'])
+    )
 
 
 def setup_socket(auth_keys_dir, bind):
@@ -101,15 +84,13 @@ def checker_listener(db):
         try:
             data = socket.recv_json()
             logging.debug("checker_listener: Got data: {}".format(data))
-            key, status, msg, checker, max_update_id = parse_check_input(data)
+            check, checker, max_update_id = parse_check_input(data)
         except Exception as e:
-            logging.warn("Couldn't parse message")
+            logging.warning("Couldn't parse message", e)
             socket.send_json({"status": "fail"})
             continue
 
         try:
-            check = Check(key, status, msg, now())
-
             rule = db.get_rule(check.rule_key)
             if rule is not None:
                 logging.debug("checker_listener: Updating check".format(check.rule_key))
@@ -173,7 +154,7 @@ class ClientListener:
         logging.debug("client_listener: handling message: {}".format(cmd))
         if cmd == 'status':
             logging.debug("client_listener: status")
-            data = [s.client_data() for s in self.db.get_statuses()]
+            data = [s.dict() for s in self.db.get_statuses()]
             return {'status': 'ok', 'data': data}
         elif cmd == 'dump-rules':
             return {'status': 'ok', 'data': self.db.rule_config_data()}
@@ -383,7 +364,7 @@ class Database:
             for row in cur.fetchall():
                 check = Check(row[0], self.int_to_status[row[1]], row[2], row[3])
                 rule = self.get_rule(row[0])
-                ret.append(Status(rule, check, last_successful.get(row[0], None), config['check_timeout']))
+                ret.append(Status.from_rule_check(rule, check, last_successful.get(row[0], None), config['check_timeout']))
 
             # append rules that don't have any check data yet
             cur = db.execute("""
@@ -394,7 +375,7 @@ class Database:
             """)
             for row in cur.fetchall():
                 rule = self._row_to_rule(row)
-                ret.append(Status(rule, None, None, config['check_timeout']))
+                ret.append(Status.from_rule_check(rule, None, None, config['check_timeout']))
             return ret
 
     def rule_config_data(self):

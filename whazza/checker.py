@@ -3,8 +3,9 @@ import time
 import os
 import logging
 
+from datetime import datetime
 from .commands import commands, ssl_status, domain
-
+from .base import Check
 from .config import read_config
 
 config = read_config()
@@ -130,13 +131,16 @@ def main():
                     except Exception as e:
                         logging.warn("Caught exception during check, {}".format(e))
                         status, message = 'fail', "Exception during check: {}".format(str(e))
-                    result_msg = {'key': rule['key'], 'status': status, 'msg': message, 'checker_id': config['checker_id']}
+                    check = Check(rule['key'], status, message, datetime.now())
                 else:
                     logging.warn("Couldn't find command for type '{}'".format(rule['type']))
                     # maybe add a special status (panic?) for these "meta" fails?
-                    result_msg = {'key': rule['key'], 'status': 'fail', 'msg': "Couldn't find command for type '{}'".format(rule['type']), 'checker_id': config['checker_id']}
-                msg = result_msg
-                msg['max_update_id'] = max_update_id
+                    check = Check(rule['key'], 'fail', "Couldn't find command for type '{}'", datetime.now())
+                msg = {
+                    'check': check.dict(),
+                    'checker_id': config['checker_id'],
+                    'max_update_id': max_update_id,
+                }
                 response = send_msg(socket, msg)
                 rule_config = response.get('rule-config', [])
                 if rule_config != []:

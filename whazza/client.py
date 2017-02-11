@@ -4,9 +4,9 @@ import sys
 import zmq
 import json
 import fileinput
-from datetime import datetime
 import humanize
 
+from .base import Status
 from .config import read_config
 
 config = read_config()
@@ -32,11 +32,12 @@ def status(socket):
         print("Status:")
         print("=======")
         for row in res['data']:
-            message = row['message'].replace("\n", " ")
+            s = Status.from_dict(row)
+            message = s.message.replace("\n", " ")
             if not longout and len(message) > 43:
                 message = message[:40] + "..."
-            times = humanize.naturaltime(datetime.fromtimestamp(row['time']), "%Y-%m-%d %H:%M")
-            print("{:30s}   {:15s}   {:20s}   {}".format(row['key'], row['status'], times, message))
+            times = humanize.naturaltime(s.last_check, "%Y-%m-%d %H:%M")
+            print("{:30s}   {:15s}   {:20s}   {}".format(s.rule_key, s.status, times, message))
     else:
         print("Error: {}".format(res['message']))
 
