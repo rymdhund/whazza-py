@@ -1,30 +1,17 @@
-import yaml
-import sys
 import zmq
 import time
 import os
 import logging
 
-import commands
-import ssl_status
-import domain
+from .commands import commands, ssl_status, domain
 
+from .config import read_config
 
-config = {}
-try:
-    configfile = os.environ.get('WHAZZA_CONFIG_FILE', "config.yml")
-    with open(configfile, 'r') as stream:
-        config = yaml.safe_load(stream)
-except FileNotFoundError:
-    print("INFO: No config file found, running with defaults")
-except yaml.scanner.ScannerError:
-    print("ERROR: Couldn't parse config file")
-    sys.exit(1)
-
-
+config = read_config()
+config.setdefault('keys_dir', 'whazza_checker_keys')
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5555)
-config.setdefault('keys_dir', 'keys')
+config.setdefault('checker_id', 'default')
 
 
 def send_msg(socket, msg):

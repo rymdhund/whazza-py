@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+
+import _preamble
+import sys
+from whazza import server
+
+if __name__ == '__main__':
+    server.main()

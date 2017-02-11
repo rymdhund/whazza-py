@@ -1,6 +1,5 @@
 import os
 import logging
-import yaml
 import sys
 import zmq
 import json
@@ -8,19 +7,12 @@ import fileinput
 from datetime import datetime
 import humanize
 
-config = {}
-try:
-    with open("config.yml", 'r') as stream:
-        config = yaml.safe_load(stream)
-except FileNotFoundError:
-    print("INFO: No config file found, running with defaults")
-except yaml.scanner.ScannerError:
-    print("ERROR: Couldn't parse config file")
-    sys.exit(1)
+from .config import read_config
 
+config = read_config()
+config.setdefault('keys_dir', 'whazza_client_keys')
 config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5556)
-config.setdefault('keys_dir', 'keys')
 
 
 def send_msg(socket, msg):

@@ -1,0 +1,3 @@
+notification_url: 'http://notifications'
+notification_base_msg:
+  dest: 'abc'
