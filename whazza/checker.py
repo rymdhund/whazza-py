@@ -143,7 +143,9 @@ def main() -> None:
                     'max_update_id': max_update_id,
                 }
                 response = send_msg(socket, msg)
-                rule_config = response.get('rule-config', [])
+                rule_config = [
+                    Rule.from_dict(r) for r in response.get('rule-config', [])
+                ]
                 if rule_config != []:
                     logging.debug("Info: updating config")
                     new_rules = rule_config

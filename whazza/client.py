@@ -78,9 +78,7 @@ def init_cert() -> None:
     ''' Generate certificate files if they don't exist '''
     from zmq import auth
 
-    key_filename = "client"
-    key_path = os.path.join(config['keys_dir'], key_filename)
-    config['keyfile'] = keyfile = "{}.key_secret".format(key_path)
+    keyfile = os.path.join(config['keys_dir'], "client.key_secret")
 
     if not (os.path.exists(keyfile)):
         logging.info("No client certificate found, generating")
@@ -91,7 +89,7 @@ def init_cert() -> None:
             pass
 
         # create new keys in certificates dir
-        auth.create_certificates(keys_dir, key_filename)
+        auth.create_certificates(keys_dir, "client")
 
 
 def main() -> None:
@@ -103,7 +101,8 @@ def main() -> None:
     init_cert()
 
     # setup certificates
-    client_public, client_secret = zmq.auth.load_certificate(config['keyfile'])
+    keyfile = os.path.join(config['keys_dir'], "client.key_secret")
+    client_public, client_secret = zmq.auth.load_certificate(keyfile)
     server_public_file = os.path.join(config['keys_dir'], "server.key")
     server_public, _ = zmq.auth.load_certificate(server_public_file)
 

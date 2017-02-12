@@ -32,7 +32,8 @@ def setup_socket(auth_keys_dir: str, bind: str) -> zmq.Socket:
 
     # Setup auth
     auth.configure_curve(domain='*', location=auth_keys_dir)
-    server_public, server_secret = zmq.auth.load_certificate(config['keyfile'])
+    keyfile = os.path.join(config['keys_dir'], "server.key_secret")
+    server_public, server_secret = zmq.auth.load_certificate(keyfile)
 
     # Configure and bind socket
     socket = ctx.socket(zmq.REP)
@@ -41,7 +42,7 @@ def setup_socket(auth_keys_dir: str, bind: str) -> zmq.Socket:
     socket.curve_server = True
     socket.bind(bind)
 
-    return socket
+    return socket, auth
 
 
 def notify(msg: str) -> None:
@@ -61,10 +62,11 @@ def notify(msg: str) -> None:
 
 
 def checker_listener(db: Database):
-    auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_checkers')
-    socket = setup_socket(auth_keys_dir, "tcp://*:5555")
-
     logging.info("Starting checker listener")
+
+    auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_checkers')
+    socket, auth = setup_socket(auth_keys_dir, "tcp://*:5555")
+
     while True:
         try:
             data = socket.recv_json()
@@ -119,10 +121,10 @@ class ClientListener:
         self.db = db
 
     def run(self) -> None:
-        auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_clients')
-        self.socket = setup_socket(auth_keys_dir, "tcp://*:5556")
-
         logging.info("Starting client listener")
+        auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_clients')
+        self.socket, auth = setup_socket(auth_keys_dir, "tcp://*:5556")
+
         while True:
             try:
                 data = self.socket.recv_json()
@@ -223,7 +225,7 @@ def init_cert() -> None:
     auth_checkers_dir = os.path.join(keys_dir, 'authorized_checkers')
     auth_clients_dir = os.path.join(keys_dir, 'authorized_clients')
 
-    config['keyfile'] = keyfile = os.path.join(keys_dir, "server.key_secret")
+    keyfile = os.path.join(keys_dir, "server.key_secret")
 
     if not (os.path.exists(keyfile)):
         logging.info("No server certificate found, generating")
