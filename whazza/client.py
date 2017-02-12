@@ -6,7 +6,8 @@ import json
 import fileinput
 import humanize
 
-from .base import Status
+from typing import Dict, Any
+from .core import Status
 from .config import read_config
 
 config = read_config()
@@ -15,7 +16,7 @@ config.setdefault('server_host', 'localhost')
 config.setdefault('server_port', 5556)
 
 
-def send_msg(socket, msg):
+def send_msg(socket: zmq.Socket, msg: Dict[str, Any]) -> Dict[str, Any]:
     socket.send_json(msg)
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
@@ -25,7 +26,7 @@ def send_msg(socket, msg):
         raise IOError("Timeout sending message")
 
 
-def status(socket):
+def status(socket: zmq.Socket) -> None:
     longout = config.get('longout', False)
     res = send_msg(socket, {'cmd': "status"})
     if res['status'] == 'ok':
@@ -42,7 +43,7 @@ def status(socket):
         print("Error: {}".format(res['message']))
 
 
-def dump_rules(socket):
+def dump_rules(socket: zmq.Socket) -> None:
     res = send_msg(socket, {'cmd': 'dump-rules'})
     if res['status'] == 'ok':
         print(json.dumps(res['data'], sort_keys=True, indent=2))
@@ -50,7 +51,7 @@ def dump_rules(socket):
         print("Error: {}".format(res['message']))
 
 
-def set_rules(socket, filename):
+def set_rules(socket: zmq.Socket, filename: str) -> None:
     inp = ""
     for line in fileinput.input(filename):
         inp += line
@@ -64,7 +65,7 @@ def set_rules(socket, filename):
         print("Error: {}".format(res['message']))
 
 
-def usage(ret):
+def usage(ret: int) -> None:
     print("usage: {} <cmd>".format(sys.argv[0]))
     print("where cmd is:")
     print("  status")
@@ -73,7 +74,7 @@ def usage(ret):
     sys.exit(ret)
 
 
-def init_cert():
+def init_cert() -> None:
     ''' Generate certificate files if they don't exist '''
     from zmq import auth
 
@@ -93,7 +94,7 @@ def init_cert():
         auth.create_certificates(keys_dir, key_filename)
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         usage(1)
 

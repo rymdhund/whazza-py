@@ -12,5 +12,11 @@ run-server:
 run-client:
 	docker run --rm -it -v $(PWD)/client:/app --link whazzaserver whazza python3 client.py
 
-integration-test:
+integration-test: build
 	docker run --rm -it whazza bash -c "cd integration_test; ./test.sh"
+
+check:
+	python -m mypy --silent-imports whazza
+
+test:
+	python -m unittest discover

@@ -1,19 +1,17 @@
 import zmq
-import json
 import threading
-import sqlite3
 import os
 import jsonschema
 import logging
 import requests
 import time
 
-from contextlib import closing
+from typing import Any, Dict, Tuple, List
 from zmq.auth.thread import ThreadAuthenticator
-from pkg_resources import resource_string
 
 from .config import read_config
-from .base import Rule, Check, Status
+from .core import Rule, Check
+from .database import Database
 
 
 config = read_config()
@@ -26,7 +24,7 @@ class ValidationError(Exception):
     pass
 
 
-def setup_socket(auth_keys_dir, bind):
+def setup_socket(auth_keys_dir: str, bind: str) -> zmq.Socket:
     # New context, to be able to do different auth
     ctx = zmq.Context()
     auth = ThreadAuthenticator(ctx)
@@ -46,7 +44,7 @@ def setup_socket(auth_keys_dir, bind):
     return socket
 
 
-def notify(msg):
+def notify(msg: str) -> None:
     if 'notification_url' in config:
         logging.info("Notify: {}".format(msg))
 
@@ -62,7 +60,7 @@ def notify(msg):
             logging.warn("Exception sending notification: {}".format(e))
 
 
-def checker_listener(db):
+def checker_listener(db: Database):
     auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_checkers')
     socket = setup_socket(auth_keys_dir, "tcp://*:5555")
 
@@ -117,10 +115,10 @@ def checker_listener(db):
 
 
 class ClientListener:
-    def __init__(self, db):
+    def __init__(self, db: Database) -> None:
         self.db = db
 
-    def run(self):
+    def run(self) -> None:
         auth_keys_dir = os.path.join(config['keys_dir'], 'authorized_clients')
         self.socket = setup_socket(auth_keys_dir, "tcp://*:5556")
 
@@ -141,14 +139,17 @@ class ClientListener:
                 logging.warning("client_listener: Couldn't process message", e)
                 self.socket.send_json({"status": "error", "message": "bad input"})
 
-    def process_command(self, cmd, data):
+    def process_command(self, cmd: str, data: Any) -> Dict[str, Any]:
         logging.debug("client_listener: handling message: {}".format(cmd))
         if cmd == 'status':
             logging.debug("client_listener: status")
             data = [s.dict() for s in self.db.get_statuses()]
             return {'status': 'ok', 'data': data}
         elif cmd == 'dump-rules':
-            return {'status': 'ok', 'data': self.db.rule_config_data()}
+            return {
+                'status': 'ok',
+                'data': [r.dict() for r in self.db.get_rules()]
+            }
         elif cmd == 'set-rules':
             try:
                 rules = self.parse_set_rules_data(data)
@@ -159,7 +160,7 @@ class ClientListener:
                 return {'status': 'error', 'message': str(e)}
         return {"status": "error", "message": "Unknown command"}
 
-    def parse_input(self, data):
+    def parse_input(self, data: Dict[str, Any]) -> Tuple[str, Any]:
         schema = {
             "type": "object",
             "properties": {
@@ -176,7 +177,7 @@ class ClientListener:
             logging.warn("Json doesn't follow schema: {}".format(str(e)))
             raise ValidationError("Error validating data: json doesn't follow schema")
 
-    def parse_set_rules_data(self, data):
+    def parse_set_rules_data(self, data: Dict[str, Any]) -> List[Rule]:
         schema = {
             "type": "object",
             "properties": {
@@ -216,174 +217,7 @@ class ClientListener:
         return rules
 
 
-############
-# Database #
-############
-
-class Database:
-    def __init__(self, filename):
-        self.filename = filename
-
-        self.status_to_int = {'good': 1, 'fail': 2, 'expired': 3}
-        self.int_to_status = {1: 'good', 2: 'fail', 3: 'expired'}
-
-        if not os.path.isfile(filename):
-            logging.info("Creating database {}".format(filename))
-            self._init_db()
-
-    def _row_to_rule(self, row):
-        params = json.loads(row[3])
-        return Rule(row[0], row[1], row[2], params, row[4], row[5])
-
-    def _get_rule(self, key, db):
-        cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where key = ?", (key,))
-        res = cur.fetchone()
-        if res is not None:
-            return self._row_to_rule(res)
-        return None
-
-    def get_rule(self, key):
-        with closing(self._connect_db()) as db:
-            return self._get_rule(key, db)
-
-    def get_rules(self):
-        with closing(self._connect_db()) as db:
-            cur = db.execute("select type, key, check_interval, params, checker, update_id from rules")
-            return [self._row_to_rule(row) for row in cur.fetchall()]
-
-    def get_check(self, key):
-        with closing(self._connect_db()) as db:
-            cur = db.execute("select status, msg, time from checks where rule_key = ? limit 1", (key,))
-
-            row = cur.fetch_one()
-            if row:
-                return Check(key, row[0], row[1], row[2])
-            else:
-                return None
-
-    def _add_rule(self, rule, db):
-        db.execute("""
-        insert into rules (type, key, check_interval, params, checker, update_id)
-        values (?, ?, ?, ?, ?, (select ifnull(max(update_id), 0)+1 from rules))
-        """, (rule.type, rule.key, rule.check_interval, json.dumps(rule.params), rule.checker))
-
-    def add_rule(self, rule):
-        with closing(self._connect_db()) as db:
-            self._add_rule(rule, db)
-            db.commit()
-
-    def get_new_rules(self, checker, update_id):
-        with closing(self._connect_db()) as db:
-            cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where checker=? and update_id > ?", (checker, update_id))
-            return [self._row_to_rule(row) for row in cur.fetchall()]
-
-    def _update_rule(self, rule, db):
-        db.execute("""
-        update rules set type=?, check_interval=?, params=?, checker=?, update_id=(select ifnull(max(update_id), 0)+1 from rules)
-        where key=?
-        """, (rule.type, rule.check_interval, json.dumps(rule.params), rule.checker, rule.key))
-
-    def update_rules(self, rules):
-        with closing(self._connect_db()) as db:
-            # remove all rules
-            db.execute("""
-            update rules set type='none', update_id=(select ifnull(max(update_id), 0)+1 from rules)
-            """)
-
-            for rule in rules:
-                r = self._get_rule(rule.key, db)
-                if r is None:
-                    self._add_rule(rule, db)
-                else:
-                    self._update_rule(rule, db)
-            db.commit()
-
-    def add_check(self, check):
-        with closing(self._connect_db()) as db:
-
-            db.execute("""
-            insert into checks (rule_key, time, status, msg) values (?, ?, ?, ?)
-            """, (check.rule_key, check.time, self.status_to_int[check.status], check.msg))
-            db.commit()
-
-    def set_notification(self, key, status):
-        with closing(self._connect_db()) as db:
-            db.execute("delete from notifications where rule_key = ?", (key,))
-
-            # dont save anything on "good" status
-            if status != 'good':
-                db.execute("insert into notifications (rule_key, status) values (?, ?)", (key, self.status_to_int[status]))
-            db.commit()
-
-    def get_notified_status(self, key):
-        """ Returns 'good' if we haven't sent any notifications
-        """
-        with closing(self._connect_db()) as db:
-            cur = db.execute("select status from notifications where rule_key = ?", (key,))
-            row = cur.fetchone()
-            if row:
-                return self.int_to_status[row[0]]
-            else:
-                return 'good'
-
-    def get_statuses(self):
-        with closing(self._connect_db()) as db:
-            # Find last successful check for each rule
-            cur = db.execute("""
-                select c1.rule_key, c1.time
-                from (select * from checks where status = 1) c1
-                left join checks c2
-                on (c1.rule_key = c2.rule_key and c1.time < c2.time and c2.status = 1)
-                where c2.id is null
-            """)
-            last_successful = {}
-            for row in cur.fetchall():
-                last_successful[row[0]] = row[1]
-            cur.close()
-
-            # Find last check for each rule
-            cur = db.execute("""
-                select c1.rule_key, c1.status, c1.msg, c1.time
-                from checks c1
-                left join checks c2
-                on (c1.rule_key = c2.rule_key and c1.time < c2.time)
-                left join rules r
-                on (c1.rule_key = r.key)
-                where c2.id is null and r.type != 'none'
-            """)
-            ret = []
-            for row in cur.fetchall():
-                check = Check(row[0], self.int_to_status[row[1]], row[2], row[3])
-                rule = self.get_rule(row[0])
-                ret.append(Status.from_rule_check(rule, check, last_successful.get(row[0], None), config['check_timeout']))
-
-            # append rules that don't have any check data yet
-            cur = db.execute("""
-                select r.type, r.key, r.check_interval, r.params, r.checker, r.update_id key from rules r
-                left join checks c
-                on (r.key = c.rule_key)
-                where c.id is null and r.type != 'none'
-            """)
-            for row in cur.fetchall():
-                rule = self._row_to_rule(row)
-                ret.append(Status.from_rule_check(rule, None, None, config['check_timeout']))
-            return ret
-
-    def rule_config_data(self):
-        rules = self.get_rules()
-        return [rule.client_dict() for rule in rules if rule.type != 'none']
-
-    def _connect_db(self):
-        return sqlite3.connect(self.filename, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-
-    def _init_db(self):
-        schema = resource_string('whazza', "assets/schema.sql").decode()
-        with closing(self._connect_db()) as db:
-            db.cursor().executescript(schema)
-            db.commit()
-
-
-def init_cert():
+def init_cert() -> None:
     ''' Generate certificate files'''
     keys_dir = config['keys_dir']
     auth_checkers_dir = os.path.join(keys_dir, 'authorized_checkers')
@@ -413,7 +247,7 @@ def init_cert():
         zmq.auth.create_certificates(keys_dir, "server")
 
 
-def expired_checker(db):
+def expired_checker(db: Database) -> None:
     # check every minute for expired stuff
     # start by waiting 1m to give checkers time to check in when we're first starting
     while True:
@@ -422,7 +256,7 @@ def expired_checker(db):
         for s in statuses:
             if s.status == 'expired' and db.get_notified_status(s.rule_key) != 'expired':
                 db.set_notification(s.rule_key, s.status)
-                msg = "Check {}. status '{}'".format(s['key'], s['status'])
+                msg = "Check {}. status '{}'".format(s.rule_key, s.status)
                 notify(msg)
 
 
@@ -430,12 +264,12 @@ def expired_checker(db):
 # Main #
 ########
 
-def main():
+def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
 
     init_cert()
 
-    db = Database(config['database'])
+    db = Database(config['database'], config)
 
     checker_thread = threading.Thread(target=checker_listener, args=(db,))
     checker_thread.start()

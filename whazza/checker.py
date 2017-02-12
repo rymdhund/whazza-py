@@ -3,9 +3,10 @@ import time
 import os
 import logging
 
+from typing import Dict, Any, List  # NOQA
 from datetime import datetime
 from .commands import commands, ssl_status, domain
-from .base import Check
+from .core import Check, Rule
 from .config import read_config
 
 config = read_config()
@@ -15,7 +16,7 @@ config.setdefault('server_port', 5555)
 config.setdefault('checker_id', 'default')
 
 
-def send_msg(socket, msg):
+def send_msg(socket: zmq.Socket, msg: Dict[str, Any]) -> Dict[str, Any]:
     socket.send_json(msg)
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
@@ -27,32 +28,32 @@ def send_msg(socket, msg):
         raise IOError("Timeout sending message")
 
 
-def now():
+def now() -> float:
     return time.time()
 
 
 class Rules:
-    def __init__(self):
-        self.rules = []
+    def __init__(self) -> None:
+        self.rules = []  # type: List[Rule]
 
-    def add(self, rule):
-        if self.has_key(rule['key']):
-            self.rm(rule['key'])
+    def add(self, rule: Rule) -> None:
+        if self.has_rule(rule.key):
+            self.rm(rule.key)
         self.rules.append(rule)
 
-    def has_key(self, key):
+    def has_rule(self, key: str) -> bool:
         for r in self.rules:
-            if key == r['key']:
+            if key == r.key:
                 return True
         return False
 
-    def rm(self, key):
+    def rm(self, key: str) -> None:
         for r in self.rules:
-            if key == r['key']:
+            if key == r.key:
                 self.rules.remove(r)
 
 
-def init_cert():
+def init_cert() -> None:
     ''' Generate certificate files if they don't exist '''
     from zmq import auth
 
@@ -72,7 +73,7 @@ def init_cert():
         auth.create_certificates(keys_dir, key_filename)
 
 
-def main():
+def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
     logging.info("starting")
 
@@ -99,10 +100,10 @@ def main():
     # check-in every 5 min by default
     check_in_key = 'checkers/{}/check-in'.format(config['checker_id'])
     rules = Rules()
-    rules.add({'type': 'check-in', 'key': check_in_key, 'check_interval': 5 * 60, 'params': {}, 'checker': config['checker_id'], 'update_id': 0})
+    rules.add(Rule('check-in', check_in_key, 5 * 60, {}, config['checker_id'], 0))
 
     # keep track of when the checks were run
-    last_run = {}
+    last_run = {}  # type: Dict[str, float]
     max_update_id = 0
 
     while(1):
@@ -122,20 +123,20 @@ def main():
         new_rules = None
         logging.debug("Checking for something to do")
         for rule in rules.rules:
-            if now() - last_run.get(rule['key'], 0) >= rule['check_interval']:
-                logging.debug("running {}".format(rule['type']))
-                if rule['type'] in cmds:
-                    cmd = cmds[rule['type']]
+            if now() - last_run.get(rule.key, 0) >= rule.check_interval:
+                logging.debug("running {}".format(rule.type))
+                if rule.type in cmds:
+                    cmd = cmds[rule.type]
                     try:
-                        status, message = cmd(rule['params'])
+                        status, message = cmd(rule.params)
                     except Exception as e:
                         logging.warn("Caught exception during check, {}".format(e))
                         status, message = 'fail', "Exception during check: {}".format(str(e))
-                    check = Check(rule['key'], status, message, datetime.now())
+                    check = Check(rule.key, status, message, datetime.now())
                 else:
-                    logging.warn("Couldn't find command for type '{}'".format(rule['type']))
+                    logging.warn("Couldn't find command for type '{}'".format(rule.type))
                     # maybe add a special status (panic?) for these "meta" fails?
-                    check = Check(rule['key'], 'fail', "Couldn't find command for type '{}'", datetime.now())
+                    check = Check(rule.key, 'fail', "Couldn't find command for type '{}'", datetime.now())
                 msg = {
                     'check': check.dict(),
                     'checker_id': config['checker_id'],
@@ -147,18 +148,18 @@ def main():
                     logging.debug("Info: updating config")
                     new_rules = rule_config
 
-                last_run[rule['key']] = now()
+                last_run[rule.key] = now()
 
         if new_rules is not None:
             for rule in new_rules:
-                if rule['type'] == 'none':
-                    rules.rm(rule['key'])
-                    logging.info("Removed rule {}".format(rule['key']))
+                if rule.type == 'none':
+                    rules.rm(rule.key)
+                    logging.info("Removed rule {}".format(rule.key))
                 else:
                     rules.add(rule)
-                    logging.info("Updated rule {}".format(rule['key']))
-                    if rule['update_id'] > max_update_id:
-                        max_update_id = rule['update_id']
+                    logging.info("Updated rule {}".format(rule.key))
+                    if rule.update_id > max_update_id:
+                        max_update_id = rule.update_id
         else:
             time.sleep(10)
 

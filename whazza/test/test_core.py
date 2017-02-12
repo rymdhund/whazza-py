@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
-from ..base import Rule, Check, Status
 from json import dumps, loads
+from ..core import Rule, Check, Status
 
 
 class TestJson(unittest.TestCase):
