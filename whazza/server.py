@@ -249,9 +249,6 @@ def expired_checker(db: Database) -> None:
 def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
 
-    notify("hello")
-    return
-
     init_cert()
 
     db = Database(config['database'], config)

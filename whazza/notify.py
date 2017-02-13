@@ -21,7 +21,8 @@ def notify(msg: str) -> None:
             requests.post(config['notification_url'], data=payload)
         except Exception as e:
             logging.warn("Exception sending notification: {}".format(e))
-    elif 'notification_mail' in config:
+
+    if config['notification_mail'] is not None:
         mail_thread = threading.Thread(target=notify_email, args=(msg,))
         mail_thread.start()
 
@@ -31,13 +32,13 @@ def notify_email(msg: str) -> None:
 
     msg = MIMEText(msg)
     msg['Subject'] = 'Notification'
-    msg['From'] = config.get('mail_from', 'whazza@example.com')
+    msg['From'] = config['mail_from']
     msg['To'] = config['notification_mail']
 
     try:
-        with smtplib.SMTP_SSL(config.get('smtp_host', 'localhost')) as s:
-            if 'smtp_user' in config:
-                s.login(config['smtp_user'], config.get('smtp_password', ''))
+        with smtplib.SMTP_SSL(config['smtp_host']) as s:
+            if config['smtp_user'] is not None:
+                s.login(config['smtp_user'], config['smtp_password'])
             s.send_message(msg)
     except Exception as e:
         logging.warning("Couldn't send mail", e)

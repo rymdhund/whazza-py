@@ -21,6 +21,10 @@ def server_config():
     config.setdefault('notification_url', None)
     config.setdefault('notification_base_msg', {})
     config.setdefault('notification_mail', None)
+    config.setdefault('mail_from', 'whazza@example.com')
+    config.setdefault('smtp_host', 'localhost')
+    config.setdefault('smtp_user', None)
+    config.setdefault('smtp_password', '')
 
     return config
 
