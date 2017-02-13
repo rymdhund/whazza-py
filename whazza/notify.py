@@ -30,15 +30,15 @@ def notify(msg: str) -> None:
 def notify_email(msg: str) -> None:
     logging.debug('notifying {}'.format(config['notification_mail']))
 
-    msg = MIMEText(msg)
-    msg['Subject'] = 'Notification'
-    msg['From'] = config['mail_from']
-    msg['To'] = config['notification_mail']
+    mail = MIMEText(msg)
+    mail['Subject'] = 'Notification'
+    mail['From'] = config['mail_from']
+    mail['To'] = config['notification_mail']
 
     try:
         with smtplib.SMTP_SSL(config['smtp_host']) as s:
             if config['smtp_user'] is not None:
                 s.login(config['smtp_user'], config['smtp_password'])
-            s.send_message(msg)
+            s.send_message(mail)
     except Exception as e:
         logging.warning("Couldn't send mail", e)
