@@ -17,7 +17,7 @@ def send_msg(socket: zmq.Socket, msg: Dict[str, Any]) -> Dict[str, Any]:
     socket.send_json(msg)
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
-    if poller.poll(10 * 1000):  # 10s timeout in milliseconds
+    if poller.poll(config['timeout'] * 1000):  # timeout in milliseconds
         return socket.recv_json()
     else:
         raise IOError("Timeout sending message")

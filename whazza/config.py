@@ -35,6 +35,7 @@ def client_config():
     config.setdefault('server_host', 'localhost')
     config.setdefault('server_port', 5556)
     config.setdefault('longout', False)
+    config.setdefault('timeout', 10)
     return config
 
 
