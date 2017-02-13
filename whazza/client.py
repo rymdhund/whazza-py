@@ -8,12 +8,9 @@ import humanize
 
 from typing import Dict, Any
 from .core import Status
-from .config import read_config
+from .config import client_config
 
-config = read_config()
-config.setdefault('keys_dir', 'whazza_client_keys')
-config.setdefault('server_host', 'localhost')
-config.setdefault('server_port', 5556)
+config = client_config()
 
 
 def send_msg(socket: zmq.Socket, msg: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,7 +24,7 @@ def send_msg(socket: zmq.Socket, msg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def status(socket: zmq.Socket) -> None:
-    longout = config.get('longout', False)
+    longout = config['longout']
     res = send_msg(socket, {'cmd': "status"})
     if res['status'] == 'ok':
         print("Status:")

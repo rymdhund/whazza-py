@@ -7,13 +7,9 @@ from typing import Dict, Any, List  # NOQA
 from datetime import datetime
 from .commands import commands, ssl_status, domain
 from .core import Check, Rule
-from .config import read_config
+from .config import checker_config
 
-config = read_config()
-config.setdefault('keys_dir', 'whazza_checker_keys')
-config.setdefault('server_host', 'localhost')
-config.setdefault('server_port', 5555)
-config.setdefault('checker_id', 'default')
+config = checker_config()
 
 
 def send_msg(socket: zmq.Socket, msg: Dict[str, Any]) -> Dict[str, Any]:

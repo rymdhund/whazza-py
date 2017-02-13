@@ -10,3 +10,34 @@ def read_config():
     except FileNotFoundError:
         print("INFO: No config file found, running with defaults")
         return {}
+
+
+def server_config():
+    config = read_config()
+    config.setdefault('keys_dir', 'whazza_server_keys')
+    config.setdefault('database', 'db.sqlite3')
+    config.setdefault('check_timeout', 300)  # 5 minute timeout by default
+
+    config.setdefault('notification_url', None)
+    config.setdefault('notification_base_msg', {})
+    config.setdefault('notification_mail', None)
+
+    return config
+
+
+def client_config():
+    config = read_config()
+    config.setdefault('keys_dir', 'whazza_client_keys')
+    config.setdefault('server_host', 'localhost')
+    config.setdefault('server_port', 5556)
+    config.setdefault('longout', False)
+    return config
+
+
+def checker_config():
+    config = read_config()
+    config.setdefault('keys_dir', 'whazza_checker_keys')
+    config.setdefault('server_host', 'localhost')
+    config.setdefault('server_port', 5555)
+    config.setdefault('checker_id', 'default')
+    return config

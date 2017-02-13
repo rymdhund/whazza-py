@@ -3,21 +3,17 @@ import threading
 import os
 import jsonschema
 import logging
-import requests
 import time
-
 from typing import Any, Dict, Tuple, List
 from zmq.auth.thread import ThreadAuthenticator
 
-from .config import read_config
+from .config import server_config
 from .core import Rule, Check
 from .database import Database
+from .notify import notify
 
 
-config = read_config()
-config.setdefault('keys_dir', 'whazza_server_keys')
-config.setdefault('database', 'db.sqlite3')
-config.setdefault('check_timeout', 300)  # 5 minute timeout by default
+config = server_config()
 
 
 class ValidationError(Exception):
@@ -43,22 +39,6 @@ def setup_socket(auth_keys_dir: str, bind: str) -> zmq.Socket:
     socket.bind(bind)
 
     return socket, auth
-
-
-def notify(msg: str) -> None:
-    if 'notification_url' in config:
-        logging.info("Notify: {}".format(msg))
-
-        if 'notification_base_msg' in config:
-            payload = config['notification_base_msg']
-        else:
-            payload = {}
-        payload['message'] = msg
-
-        try:
-            requests.post(config['notification_url'], data=payload)
-        except Exception as e:
-            logging.warn("Exception sending notification: {}".format(e))
 
 
 def checker_listener(db: Database):
@@ -268,6 +248,9 @@ def expired_checker(db: Database) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
+
+    notify("hello")
+    return
 
     init_cert()
 
