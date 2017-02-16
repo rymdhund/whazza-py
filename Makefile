@@ -4,7 +4,7 @@ build:
 	docker build -t whazza .
 
 check:
-	python -m mypy --silent-imports whazza
+	python -m mypy --silent-imports --strict-optional whazza
 
 test:
 	python -m unittest discover

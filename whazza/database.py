@@ -4,7 +4,7 @@ import json
 import sqlite3
 
 from contextlib import closing
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 from pkg_resources import resource_string
 from .core import Rule, Check, Status
 
@@ -41,7 +41,7 @@ class Database:
             cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where type != 'none'")
             return [self._row_to_rule(row) for row in cur.fetchall()]
 
-    def get_check(self, key: str) -> Check:
+    def get_check(self, key: str) -> Optional[Check]:
         with closing(self._connect_db()) as db:
             cur = db.execute("select status, msg, time from checks where rule_key = ? limit 1", (key,))
 
