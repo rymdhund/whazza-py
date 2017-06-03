@@ -129,11 +129,11 @@ def main() -> None:
                     try:
                         status, message = cmd(rule.params)
                     except Exception as e:
-                        logging.warn("Caught exception during check, {}".format(e))
+                        logging.warn("Caught exception during check", exc_info=e)
                         status, message = 'fail', "Exception during check: {}".format(str(e))
                     check = Check(rule.key, status, message, datetime.now())
                 else:
-                    logging.warn("Couldn't find command for type '{}'".format(rule.type))
+                    logging.warning("Couldn't find command for type '{}'".format(rule.type))
                     # maybe add a special status (panic?) for these "meta" fails?
                     check = Check(rule.key, 'fail', "Couldn't find command for type '{}'", datetime.now())
                 msg = {
@@ -141,7 +141,11 @@ def main() -> None:
                     'checker_id': config['checker_id'],
                     'max_update_id': max_update_id,
                 }
-                response = send_msg(socket, msg)
+                try:
+                    response = send_msg(socket, msg)
+                except Exception as e:
+                    logging.warning("Got exception on send_msg", exc_info=e)
+                    continue
                 rule_config = [
                     Rule.from_dict(r) for r in response.get('rule-config', [])
                 ]
