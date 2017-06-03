@@ -1,7 +1,12 @@
-.PHONY: build check test integration-test
+.PHONY: build binaries check test integration-test
 
 build:
 	docker build -t whazza .
+
+binaries:
+	pyinstaller -F bin/checker
+	pyinstaller -F bin/server
+	pyinstaller -F bin/client
 
 check:
 	python -m mypy --silent-imports --strict-optional whazza
