@@ -5,11 +5,15 @@ RUN apt-get update && \
         libzmq-dev \
         git
 
-COPY requirements.txt /
-RUN pip install -r /requirements.txt
+RUN pip install pipenv
+
+COPY Pipfile.lock /app/
+
+WORKDIR /app
+
+RUN pipenv install --system
 
 COPY . /app
 
-WORKDIR /app
 
 CMD echo "what do you want me to do?"

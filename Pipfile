@@ -1,0 +1,18 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[dev-packages]
+
+[packages]
+
+pyyaml = "*"
+gitpython = "*"
+pyzmq = "*"
+humanize = "*"
+"docker-py" = "*"
+jsonschema = "*"
+"python-whois" = "*"
+requests = "*"
+mypy = "*"

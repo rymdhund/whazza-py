@@ -1,9 +1,0 @@
-PyYAML
-GitPython
-pyzmq
-humanize
-docker-py
-jsonschema
-python-whois
-requests
-mypy-lang
