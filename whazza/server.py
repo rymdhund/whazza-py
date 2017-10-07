@@ -138,7 +138,7 @@ class ClientListener:
                 self.db.update_rules(rules)
                 return {'status': 'ok'}
             except Exception as e:
-                logging.warn("client_listener: Error setting rules {}".format(e))
+                logging.warn("client_listener: Error setting rules", exc_info=e)
                 return {'status': 'error', 'message': str(e)}
         return {"status": "error", "message": "Unknown command"}
 

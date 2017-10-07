@@ -25,15 +25,18 @@ class Database:
         params = json.loads(row[3])
         return Rule(row[0], row[1], row[2], params, row[4], row[5])
 
-    def _get_rule(self, key: str, db) -> Rule:
+    def _get_rule(self, key: str, db) -> Optional[Rule]:
         cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where key = ?", (key,))
         res = cur.fetchone()
-        assert(res is not None)
+        if res is None:
+            return None
         return self._row_to_rule(res)
 
     def get_rule(self, key: str) -> Rule:
         with closing(self._connect_db()) as db:
-            return self._get_rule(key, db)
+            r = self._get_rule(key, db)
+            assert(r is not None)
+            return r
 
     def get_rules(self) -> List[Rule]:
         with closing(self._connect_db()) as db:

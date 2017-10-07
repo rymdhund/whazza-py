@@ -61,9 +61,9 @@ def set_rules(socket: zmq.Socket, filename: str) -> None:
 
     res = send_msg(socket, {'cmd': 'set-rules', 'data': {'rules': rules}})
     if res['status'] == 'ok':
-        print("updated")
+        print("Updated")
     else:
-        print("Error: {}".format(res['message']))
+        print("Error from server: {}".format(res['message']))
 
 
 def usage(ret: int) -> None:
