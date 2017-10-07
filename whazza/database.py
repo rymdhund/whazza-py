@@ -28,9 +28,8 @@ class Database:
     def _get_rule(self, key: str, db) -> Rule:
         cur = db.execute("select type, key, check_interval, params, checker, update_id from rules where key = ?", (key,))
         res = cur.fetchone()
-        if res is not None:
-            return self._row_to_rule(res)
-        return None
+        assert(res is not None)
+        return self._row_to_rule(res)
 
     def get_rule(self, key: str) -> Rule:
         with closing(self._connect_db()) as db:

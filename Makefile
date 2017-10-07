@@ -9,7 +9,7 @@ binaries:
 	pyinstaller -F bin/client
 
 check:
-	python -m mypy --silent-imports --strict-optional whazza
+	python -m mypy --ignore-missing-imports --strict-optional whazza
 
 test:
 	python -m unittest discover
