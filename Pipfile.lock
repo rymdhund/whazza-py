@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "b0aefc7e45914c8c8e9d277b10e941f85fb25da74750b0d9cfffbe9fe57c8269"
+            "sha256": "0775d627c93451e3e919095f4a22cd12ddcc1ec29af8cec6f0d9b93dee122840"
         },
         "host-environment-markers": {
             "implementation_name": "cpython",
@@ -213,5 +213,38 @@
             "version": "==0.44.0"
         }
     },
-    "develop": {}
+    "develop": {
+        "altgraph": {
+            "hashes": [
+                "sha256:b966a3114c7942e2a2b4c2304b2baf1cd2ed7a5a8b2106e64e0709a21d6cfbb4",
+                "sha256:481bac8feb1716bb8e485e652ed94002cc11304abccb2911f8f4574fc9dc207b"
+            ],
+            "version": "==0.14"
+        },
+        "future": {
+            "hashes": [
+                "sha256:e39ced1ab767b5936646cedba8bcce582398233d6a627067d4c6a454c90cfedb"
+            ],
+            "version": "==0.16.0"
+        },
+        "macholib": {
+            "hashes": [
+                "sha256:15151e4dde7c2cb9758cf43f8672585a8d5b261d40a07cb9f679489c52397488",
+                "sha256:323c9c8b85768244554b3c040808ed6393c783aa6eb1122e04dc8905f442e559"
+            ],
+            "version": "==1.8"
+        },
+        "pefile": {
+            "hashes": [
+                "sha256:50faee3259cbfc78e72474ee851ed699695cb6cc5abf3fc7f155e0c1ac74c8c9"
+            ],
+            "version": "==2017.9.3"
+        },
+        "pyinstaller": {
+            "hashes": [
+                "sha256:b6c95cdbb45ac78a44723fa2992b58e14637cbefecafc22d3790af262a7fad6f"
+            ],
+            "version": "==3.3"
+        }
+    }
 }
