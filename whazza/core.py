@@ -2,11 +2,15 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 
 
-def _to_ts(dt):
+def option_to_ts(dt) -> Optional[int]:
+    if dt is None:
+        return None
     return dt.replace(tzinfo=timezone.utc).timestamp()
 
 
-def _from_ts(ts):
+def option_from_ts(ts: Optional[int]):
+    if ts is None:
+        return None
     return datetime.utcfromtimestamp(ts)
 
 
@@ -44,12 +48,12 @@ class Check:
 
     def dict(self) -> Dict[str, Any]:
         d = self.__dict__.copy()
-        d['time'] = _to_ts(d['time'])
+        d['time'] = option_to_ts(d['time'])
         return d
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> 'Check':
-        return Check(d['rule_key'], d['status'], d['msg'], _from_ts(d['time']))
+        return Check(d['rule_key'], d['status'], d['msg'], option_from_ts(d['time']))
 
     def __eq__(self, o):
         return self.__dict__ == o.__dict__
@@ -100,8 +104,8 @@ class Status:
 
     def dict(self) -> Dict[str, Any]:
         d = self.__dict__.copy()
-        d['last_successful'] = _to_ts(d['last_successful'])
-        d['last_check'] = _to_ts(d['last_check'])
+        d['last_successful'] = option_to_ts(d['last_successful'])
+        d['last_check'] = option_to_ts(d['last_check'])
         return d
 
     def client_data(self) -> Dict[str, Any]:
@@ -118,8 +122,8 @@ class Status:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> 'Status':
         return Status(d['rule_key'],
-                      _from_ts(d['last_successful']),
-                      _from_ts(d['last_check']),
+                      option_from_ts(d['last_successful']),
+                      option_from_ts(d['last_check']),
                       d['status'],
                       d['message'])
 

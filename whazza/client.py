@@ -34,10 +34,14 @@ def status(socket: zmq.Socket) -> None:
             message = s.message.replace("\n", " ")
             if not longout and len(message) > 43:
                 message = message[:40] + "..."
-            times = humanize.naturaltime(s.last_check, "%Y-%m-%d %H:%M")
+
+            if s.last_check is None:
+                times = "Never"
+            else:
+                times = humanize.naturaltime(s.last_check, "%Y-%m-%d %H:%M")
             print("{:30s}   {:15s}   {:20s}   {}".format(s.rule_key, s.status, times, message))
     else:
-        print("Error: {}".format(res['message']))
+        print("Error from server: {}".format(res['message']))
 
 
 def dump_rules(socket: zmq.Socket) -> None:
