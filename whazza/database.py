@@ -32,10 +32,9 @@ class Database:
             return None
         return self._row_to_rule(res)
 
-    def get_rule(self, key: str) -> Rule:
+    def get_rule(self, key: str) -> Optional[Rule]:
         with closing(self._connect_db()) as db:
             r = self._get_rule(key, db)
-            assert(r is not None)
             return r
 
     def get_rules(self) -> List[Rule]:
@@ -147,6 +146,7 @@ class Database:
             for row in cur.fetchall():
                 check = Check(row[0], self.int_to_status[row[1]], row[2], row[3])
                 rule = self.get_rule(row[0])
+                assert(rule is not None)
                 ret.append(Status.from_rule_check(
                     rule,
                     check,
