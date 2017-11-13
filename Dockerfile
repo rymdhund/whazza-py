@@ -8,6 +8,7 @@ RUN apt-get update && \
 RUN pip install pipenv
 
 COPY Pipfile.lock /app/
+COPY Pipfile /app/
 
 WORKDIR /app
 
